@@ -1,0 +1,35 @@
+# ---- 大体积原始数据：不入库，按 ChEMBL/ChEMBL_37/README_ChEMBL_37.md 重新下载 ----
+*.tar.gz
+*.db
+*.db-journal
+*.db-wal
+*.h5
+*.sdf
+*.fps
+*.fa
+# 解压出来的 ChEMBL 数据库目录（内含 ~30 GB 的 .db）
+ChEMBL/*/chembl_*/
+
+# EBI 随数据库一同下载的官方文件：只保留目录结构，不入库
+# （重新下载方式见 ChEMBL/ChEMBL_37/README_ChEMBL_37.md）
+ChEMBL/*/LICENSE
+ChEMBL/*/README
+ChEMBL/*/REQUIRED.ATTRIBUTION
+ChEMBL/*/checksums.txt
+ChEMBL/*/chembl_*_release_notes.txt
+ChEMBL/*/chembl_*_schema.pdf
+ChEMBL/*/schema_documentation.txt
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+.venv/
+venv/
+*.egg-info/
+
+# ---- 编辑器 / 系统 ----
+.DS_Store
+.vscode/
+.idea/
+*.swp
