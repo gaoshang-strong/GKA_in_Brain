@@ -1,6 +1,6 @@
 # ChEMBL 数据库结构与内容概览报告
 
-> 自动生成于 2026-07-30 15:45　|　数据库文件：`/ShangGaoAIProjects/GKA_in_Brain/ChEMBL/ChEMBL_37/chembl_37/chembl_37_sqlite/chembl_37.db`
+> 自动生成于 2026-07-30 16:14　|　数据库文件：`/ShangGaoAIProjects/GKA_in_Brain/ChEMBL/ChEMBL_37/chembl_37/chembl_37_sqlite/chembl_37.db`
 >
 > 本报告面向**有生物学 / 生信背景、但没有药物化学背景**的读者。每一节先解释「这是什么」，再给出这个数据库里的实际统计。
 
@@ -883,13 +883,13 @@ ChEMBL 37 新增字段，标注化合物的设计模态。目前主要值是「�
 | `CHEMBL1293294` | Ras-related protein Rab-9A | Homo sapiens | 21,980 |
 | `CHEMBL4159` | 3-hydroxyacyl-CoA dehydrogenase type-2 | Homo sapiens | 20,628 |
 
-**注意榜单还是不太对劲**：Tau、ROR-γ、ALDH1A1 这类占据前列，并不是因为它们是最重要的药物靶点，而是因为 PubChem 上的大规模高通量筛选（一次几十万化合物）恰好打了这些靶点。质量标记只能保证「这条数据本身可信」，**保证不了「这批数据代表了该靶点的研究现状」**。
+**注意榜单可能还是不太对劲**：占据前列的（Microtubule-associated protein tau、Nuclear receptor ROR-gamma、Aldehyde dehydrogenase 1A1 ……）未必是最重要的药物靶点，往往只是因为 PubChem 上的大规模高通量筛选（一次几十万化合物）恰好打了这些靶点。质量标记只能保证「这条数据本身可信」，**保证不了「这批数据代表了该靶点的研究现状」**。
 
 
 ### 8.10 再叠加「仅科学文献来源」（`src_id = 1`，Top 20）
 
 
-**现在才是你预期的那张表**：EGFR、多巴胺 D2 受体、hERG 钾通道、HIV 逆转录酶、碳酸酐酶、VEGFR2……几十年来被药物化学界反复研究的经典靶点。
+再限定到人工审编的文献数据后，榜首变成了 Epidermal growth factor receptor、D(2) dopamine receptor、Voltage-gated inwardly rectifying potassium channel KCNH2 等被药物化学界长期反复研究的靶点。与上一张表对比即可看出，**「哪个靶点数据最多」这个问题的答案，取决于你是否把高通量筛选数据算进来**。
 
 | ChEMBL ID | 靶点名 | 物种 | 可用活性数 |
 | --- | --- | --- | ---: |

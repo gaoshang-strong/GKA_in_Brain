@@ -1098,8 +1098,8 @@ def sec_activities(r: Report, db: DB, args) -> None:
                 r.table(["ChEMBL ID", "靶点名", "物种", "可用活性数"],
                         [[f"`{x[0]}`", x[1], x[2], fmt(x[3])] for x in rows2],
                         aligns=["---", "---", "---", "---:"])
-                r("**注意榜单还是不太对劲**：Tau、ROR-γ、ALDH1A1 这类占据前列，"
-                  "并不是因为它们是最重要的药物靶点，而是因为 PubChem 上的大规模高通量筛选"
+                r(f"**注意榜单可能还是不太对劲**：占据前列的（{_names(rows2)} ……）"
+                  "未必是最重要的药物靶点，往往只是因为 PubChem 上的大规模高通量筛选"
                   "（一次几十万化合物）恰好打了这些靶点。质量标记只能保证「这条数据本身可信」，"
                   "**保证不了「这批数据代表了该靶点的研究现状」**。")
                 r("")
@@ -1124,8 +1124,9 @@ def sec_activities(r: Report, db: DB, args) -> None:
                 if rows3:
                     r.h(3, f"8.10 再叠加「仅科学文献来源」（`src_id = 1`，Top {args.top}）")
                     r("")
-                    r("**现在才是你预期的那张表**：EGFR、多巴胺 D2 受体、hERG 钾通道、HIV 逆转录酶、"
-                      "碳酸酐酶、VEGFR2……几十年来被药物化学界反复研究的经典靶点。")
+                    r(f"再限定到人工审编的文献数据后，榜首变成了 {_names(rows3)} 等"
+                      "被药物化学界长期反复研究的靶点。与上一张表对比即可看出，"
+                      "**「哪个靶点数据最多」这个问题的答案，取决于你是否把高通量筛选数据算进来**。")
                     r("")
                     r.table(["ChEMBL ID", "靶点名", "物种", "可用活性数"],
                             [[f"`{x[0]}`", x[1], x[2], fmt(x[3])] for x in rows3],
@@ -1134,6 +1135,15 @@ def sec_activities(r: Report, db: DB, args) -> None:
                       "同一个数据库，只是换了过滤条件，「最热门靶点」的答案就完全不同。"
                       "用 ChEMBL 时，**先想清楚你的科学问题决定了哪种过滤**，再写 SQL。")
                     r("")
+
+
+def _names(rows: list, n: int = 3) -> str:
+    """从排行结果里取前 n 个靶点名，拼成一句可嵌入正文的话。
+
+    正文里不写死具体靶点，避免换版本/换库后叙述与下方表格矛盾。
+    """
+    picked = [str(x[1]) for x in rows[:n] if x[1]]
+    return "、".join(picked) if picked else "（见下表）"
 
 
 def _conc_label(b: int) -> str:
