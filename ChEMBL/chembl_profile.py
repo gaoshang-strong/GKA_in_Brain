@@ -89,7 +89,7 @@ TABLE_DESC = {
     "chembl_id_lookup": "全局 ChEMBL ID 索引：给一个 CHEMBLxxxx，告诉你它是化合物/靶点/文献/实验",
     "chembl_release": "本数据库的版本与发布日期",
     "version": "版本信息（旧字段）",
-    "confidence_score_lookup": "靶点指认可信度 0–9 的含义字典",
+    "confidence_score_lookup": "confidence_score 0–9 的官方含义字典（靶点粒度 + 指认方式）",
     "relationship_type": "assay 与靶点关系类型字典",
     "data_validity_lookup": "数据可疑标记的含义字典",
     "action_type": "作用类型字典（激动剂、抑制剂…）及其上位归类",
@@ -167,17 +167,20 @@ ASSAY_TYPE_NOTE = {
     "U": "Unassigned：未分类",
 }
 
+# confidence_score 的中文注解。
+# 官方英文描述一律从库内的 confidence_score_lookup 表读取（见 §7.2），
+# 这里只提供补充说明，避免把官方定义写死在代码里。
 CONF_NOTE = {
-    9: "同源蛋白复合物，靶点指认最明确",
-    8: "单一蛋白靶点，明确 — **建模常用的最低门槛**",
-    7: "同源蛋白复合物（多亚基）",
-    6: "蛋白复合物",
-    5: "蛋白家族/未明确到具体成员",
-    4: "多个蛋白（如整条通路）",
-    3: "细胞系或亚细胞组分层面",
-    2: "细胞系/亚细胞，靶点为推测",
-    1: "靶点仅为推测",
-    0: "未指认靶点（如整体动物表型实验）",
+    9: "实验就是在这个蛋白上做的，靶点实体最明确 —— **建模常用的门槛**",
+    8: "实验在同源蛋白上做的（如另一物种的直系同源物），靶点按同源关系映射过来",
+    7: "直接指认到某个蛋白复合物的亚基",
+    6: "指认到同源蛋白复合物的亚基",
+    5: "可能对应多个蛋白，无法唯一确定是哪一个",
+    4: "可能对应多个同源蛋白",
+    3: "靶点是非蛋白的分子实体（如 DNA、脂质）",
+    2: "靶点是亚细胞组分（如膜制备物、微粒体）",
+    1: "靶点是非分子实体（如整个细胞、组织、生物体）",
+    0: "默认值：靶点未知或尚未指认",
 }
 
 MAX_PHASE_NOTE = {
@@ -525,8 +528,9 @@ def sec_glossary(r: Report, db: DB) -> None:
     r("两个字段决定了这条数据能不能用：")
     r("")
     r("- **`assay_type`** — 实验大类（见 §5）；")
-    r("- **`confidence_score`（0–9）** — 「靶点指认可信度」：ChEMBL 的编者对"
-      "『这个实验真的测的是这个靶点吗』的信心打分。做定量建模一般要求 **≥ 8**（单一蛋白，明确）。")
+    r("- **`confidence_score`（0–9）** — 描述这个实验被归因到了**什么粒度的靶点**、"
+      "以及归因是直接的还是靠同源关系映射的。它**不是数据质量分**（详见 §7.2）。"
+      "做定量建模一般要求 **≥ 8**，即靶点是一个单一蛋白。")
     r("")
 
     r.h(3, "1.4 活性（activity）——最容易踩坑的一张表")
@@ -879,18 +883,40 @@ def sec_assays(r: Report, db: DB, args) -> None:
     if db.has_col("assays", "confidence_score"):
         rows = db.q("SELECT COALESCE(confidence_score,-1), COUNT(*) c FROM assays GROUP BY 1 ORDER BY 1 DESC")
         vmax = max([x[1] for x in rows], default=0)
-        r.h(3, "7.2 靶点指认可信度 confidence_score ⭐")
+        # 官方定义直接从库内字典表读，不写死在代码里
+        lookup = {x[0]: (x[1], x[2]) for x in
+                  db.q("SELECT confidence_score, description, target_mapping FROM confidence_score_lookup")}
+        r.h(3, "7.2 confidence_score：靶点指认的类型与直接程度 ⭐")
         r("")
-        r("**这是筛选数据时最重要的字段之一。** 它回答：「这个实验真的能归因到这个靶点吗？」")
+        r("**这是筛选数据时最重要的字段之一，也是最容易被误解的一个。**")
+        r("")
+        r("它常被叫作「可信度分数」，但它**不是一个单纯的数据质量分**。"
+          "它同时编码了两件事：")
+        r("")
+        r("1. **靶点实体有多确定** —— 单一蛋白 > 蛋白复合物 > 多个候选蛋白 > 非蛋白分子 > 亚细胞组分 > 非分子实体；")
+        r("2. **指认是直接的还是靠同源关系映射的** —— 这正是 9 与 8、7 与 6、5 与 4 之间的区别："
+          "奇数档是 direct（实验就在该靶点上做的），偶数档是 homologous"
+          "（实验在同源物上做的，例如用大鼠蛋白测的活性被映射到人的直系同源蛋白）。")
+        r("")
+        r("所以低分**不等于**数据质量差 —— 一个 `confidence_score = 1` 的抗菌实验可能做得非常严谨，"
+          "只是它的靶点是「整个细菌」这种非分子实体。这个字段回答的是"
+          "「**这条数据能归因到什么粒度的靶点**」，而不是「这条数据可不可信」。")
+        r("")
+        r("下表的「官方描述」一列直接读自本库的 `confidence_score_lookup` 表：")
         r("")
         r.table(
-            ["分数", "实验数", "", "含义"],
-            [[x[0] if x[0] != -1 else "(空)", fmt(x[1]), bar(x[1], vmax, 18), CONF_NOTE.get(x[0], "")] for x in rows],
-            aligns=["---:", "---:", "---", "---"],
+            ["分数", "实验数", "", "官方描述（原文）", "target_mapping", "中文说明"],
+            [[x[0] if x[0] != -1 else "(空)", fmt(x[1]), bar(x[1], vmax, 12),
+              lookup.get(x[0], ("—", "—"))[0], lookup.get(x[0], ("—", "—"))[1],
+              CONF_NOTE.get(x[0], "")] for x in rows],
+            aligns=["---:", "---:", "---", "---", "---", "---"],
         )
         n_hi = db.one("SELECT COUNT(*) FROM assays WHERE confidence_score >= 8")
-        r(f"> `confidence_score >= 8` 的实验共 **{fmt(n_hi)}**（{pct(n_hi or 0, n_assay or 0)}）。"
-          "做 QSAR / 机器学习建模时，这几乎是标配过滤条件。")
+        r(f"> **常用过滤条件 `confidence_score >= 8`**（本库 **{fmt(n_hi)}** 个实验，"
+          f"{pct(n_hi or 0, n_assay or 0)}）的真实含义是"
+          "「靶点是一个单一蛋白，无论直接指认还是同源映射」，而不是「数据质量达到 8 分」。"
+          "做 QSAR / 机器学习建模时这几乎是标配，因为建模需要每条数据对应一个明确的蛋白。"
+          "如果你连同源映射也不想要（例如只认人源蛋白上实测的数据），就用 `= 9`。")
         r("")
 
     if db.has_col("assays", "assay_organism"):
@@ -1243,7 +1269,7 @@ def sec_recipes(r: Report, db: DB, args) -> None:
     r("LEFT JOIN docs d            ON act.doc_id   = d.doc_id")
     r("WHERE seq.accession = 'P35557'          -- UniProt：人葡萄糖激酶 GCK")
     r("  AND td.target_type = 'SINGLE PROTEIN'")
-    r("  AND a.confidence_score >= 8           -- 靶点指认可信")
+    r("  AND a.confidence_score >= 8           -- 靶点是单一蛋白（9=直接指认, 8=同源映射）")
     r("  AND act.pchembl_value IS NOT NULL     -- 只要能定量的")
     r("  AND act.standard_relation = '='       -- 排除删失数据")
     r("  AND act.data_validity_comment IS NULL -- 排除可疑数据")
@@ -1296,7 +1322,8 @@ def sec_recipes(r: Report, db: DB, args) -> None:
         [
             ["用了 `value` 而不是 `standard_value`", "单位混杂（µM 与 nM 混在一起），结论全错", "永远用 `standard_*` 列"],
             ["忽略 `standard_relation`", "把 `>10 µM` 当成 10 µM，把「无活性」当成「弱活性」", "定量建模时限定 `= '='`；或按删失数据处理"],
-            ["不过滤 `confidence_score`", "把细胞表型、整体动物数据当成直接的靶点活性", "建模用 `>= 8`"],
+            ["不过滤 `confidence_score`", "把归因到细胞、组织、整个生物体的数据当成单一蛋白上的活性", "建模用 `>= 8`（单一蛋白）；只要直接实测则用 `= 9`"],
+            ["把 `confidence_score` 当成数据质量分", "误以为低分 = 实验做得差；实际它描述的是靶点粒度与指认方式", "见 §7.2；低分数据在表型筛选场景下完全可用"],
             ["混用不同 `standard_type`", "IC50 与 Ki 与 %抑制率不可比", "分开处理；至少分开 IC50/EC50 与 Ki/Kd"],
             ["忽略 `potential_duplicate` / `data_validity_comment`", "同一数值被重复计数；纳入已知错误值", "两者都加进过滤条件"],
             ["把化合物记录数当成化合物数", "`compound_records` 是文献级的，数量远大于唯一化合物", "唯一化合物看 `molecule_dictionary`"],

@@ -1,6 +1,6 @@
 # ChEMBL 数据库结构与内容概览报告
 
-> 自动生成于 2026-07-30 16:14　|　数据库文件：`/ShangGaoAIProjects/GKA_in_Brain/ChEMBL/ChEMBL_37/chembl_37/chembl_37_sqlite/chembl_37.db`
+> 自动生成于 2026-07-30 18:04　|　数据库文件：`/ShangGaoAIProjects/GKA_in_Brain/ChEMBL/ChEMBL_37/chembl_37/chembl_37_sqlite/chembl_37.db`
 >
 > 本报告面向**有生物学 / 生信背景、但没有药物化学背景**的读者。每一节先解释「这是什么」，再给出这个数据库里的实际统计。
 
@@ -121,7 +121,7 @@ ChEMBL 的注释是**站在其他数据库肩膀上**的。下表来自 `version
 两个字段决定了这条数据能不能用：
 
 - **`assay_type`** — 实验大类（见 §5）；
-- **`confidence_score`（0–9）** — 「靶点指认可信度」：ChEMBL 的编者对『这个实验真的测的是这个靶点吗』的信心打分。做定量建模一般要求 **≥ 8**（单一蛋白，明确）。
+- **`confidence_score`（0–9）** — 描述这个实验被归因到了**什么粒度的靶点**、以及归因是直接的还是靠同源关系映射的。它**不是数据质量分**（详见 §7.2）。做定量建模一般要求 **≥ 8**，即靶点是一个单一蛋白。
 
 
 ### 1.4 活性（activity）——最容易踩坑的一张表
@@ -321,7 +321,7 @@ ChEMBL 的注释是**站在其他数据库肩膀上**的。下表来自 `version
 | `action_type` | 35 | 作用类型字典（激动剂、抑制剂…）及其上位归类 |
 | `target_type` | 28 | 靶点类型字典（SINGLE PROTEIN / PROTEIN COMPLEX / ORGANISM / CELL-LINE…） |
 | `version` | 11 | 版本信息（旧字段） |
-| `confidence_score_lookup` | 10 | 靶点指认可信度 0–9 的含义字典 |
+| `confidence_score_lookup` | 10 | confidence_score 0–9 的官方含义字典（靶点粒度 + 指认方式） |
 | `data_validity_lookup` | 7 | 数据可疑标记的含义字典 |
 | `assay_type` | 6 | 实验大类字典：B=结合、F=功能、A=ADME、T=毒性、P=理化、U=未分类 |
 | `relationship_type` | 6 | assay 与靶点关系类型字典 |
@@ -604,25 +604,34 @@ WHERE cs.component_synonym = 'GCK'        -- 基因名
 | U | 3,703 |  | Unassigned：未分类 |
 
 
-### 7.2 靶点指认可信度 confidence_score ⭐
+### 7.2 confidence_score：靶点指认的类型与直接程度 ⭐
 
 
-**这是筛选数据时最重要的字段之一。** 它回答：「这个实验真的能归因到这个靶点吗？」
+**这是筛选数据时最重要的字段之一，也是最容易被误解的一个。**
 
-| 分数 | 实验数 |  | 含义 |
-| ---: | ---: | --- | --- |
-| 9 | 436,802 | ████████ | 同源蛋白复合物，靶点指认最明确 |
-| 8 | 90,636 | ██ | 单一蛋白靶点，明确 — **建模常用的最低门槛** |
-| 7 | 17,611 |  | 同源蛋白复合物（多亚基） |
-| 6 | 2,846 |  | 蛋白复合物 |
-| 5 | 30,162 | █ | 蛋白家族/未明确到具体成员 |
-| 4 | 8,991 |  | 多个蛋白（如整条通路） |
-| 3 | 20,956 |  | 细胞系或亚细胞组分层面 |
-| 2 | 5,809 |  | 细胞系/亚细胞，靶点为推测 |
-| 1 | 992,848 | ██████████████████ | 靶点仅为推测 |
-| 0 | 363,777 | ███████ | 未指认靶点（如整体动物表型实验） |
+它常被叫作「可信度分数」，但它**不是一个单纯的数据质量分**。它同时编码了两件事：
 
-> `confidence_score >= 8` 的实验共 **527,438**（26.8%）。做 QSAR / 机器学习建模时，这几乎是标配过滤条件。
+1. **靶点实体有多确定** —— 单一蛋白 > 蛋白复合物 > 多个候选蛋白 > 非蛋白分子 > 亚细胞组分 > 非分子实体；
+2. **指认是直接的还是靠同源关系映射的** —— 这正是 9 与 8、7 与 6、5 与 4 之间的区别：奇数档是 direct（实验就在该靶点上做的），偶数档是 homologous（实验在同源物上做的，例如用大鼠蛋白测的活性被映射到人的直系同源蛋白）。
+
+所以低分**不等于**数据质量差 —— 一个 `confidence_score = 1` 的抗菌实验可能做得非常严谨，只是它的靶点是「整个细菌」这种非分子实体。这个字段回答的是「**这条数据能归因到什么粒度的靶点**」，而不是「这条数据可不可信」。
+
+下表的「官方描述」一列直接读自本库的 `confidence_score_lookup` 表：
+
+| 分数 | 实验数 |  | 官方描述（原文） | target_mapping | 中文说明 |
+| ---: | ---: | --- | --- | --- | --- |
+| 9 | 436,802 | █████ | Direct single protein target assigned | Protein | 实验就是在这个蛋白上做的，靶点实体最明确 —— **建模常用的门槛** |
+| 8 | 90,636 | █ | Homologous single protein target assigned | Homologous protein | 实验在同源蛋白上做的（如另一物种的直系同源物），靶点按同源关系映射过来 |
+| 7 | 17,611 |  | Direct protein complex subunits assigned | Protein complex | 直接指认到某个蛋白复合物的亚基 |
+| 6 | 2,846 |  | Homologous protein complex subunits assigned | Homologous protein complex | 指认到同源蛋白复合物的亚基 |
+| 5 | 30,162 |  | Multiple direct protein targets may be assigned | Multiple proteins | 可能对应多个蛋白，无法唯一确定是哪一个 |
+| 4 | 8,991 |  | Multiple homologous protein targets may be assigned | Multiple homologous proteins | 可能对应多个同源蛋白 |
+| 3 | 20,956 |  | Target assigned is molecular non-protein target | Molecular (non-protein) | 靶点是非蛋白的分子实体（如 DNA、脂质） |
+| 2 | 5,809 |  | Target assigned is subcellular fraction | Subcellular fraction | 靶点是亚细胞组分（如膜制备物、微粒体） |
+| 1 | 992,848 | ████████████ | Target assigned is non-molecular | Non-molecular | 靶点是非分子实体（如整个细胞、组织、生物体） |
+| 0 | 363,777 | ████ | Default value - Target unknown or has yet to be assigned | Unassigned | 默认值：靶点未知或尚未指认 |
+
+> **常用过滤条件 `confidence_score >= 8`**（本库 **527,438** 个实验，26.8%）的真实含义是「靶点是一个单一蛋白，无论直接指认还是同源映射」，而不是「数据质量达到 8 分」。做 QSAR / 机器学习建模时这几乎是标配，因为建模需要每条数据对应一个明确的蛋白。如果你连同源映射也不想要（例如只认人源蛋白上实测的数据），就用 `= 9`。
 
 
 ### 7.3 实验体系物种（Top 20）
@@ -1062,7 +1071,7 @@ JOIN compound_structures cs ON cs.molregno  = md.molregno
 LEFT JOIN docs d            ON act.doc_id   = d.doc_id
 WHERE seq.accession = 'P35557'          -- UniProt：人葡萄糖激酶 GCK
   AND td.target_type = 'SINGLE PROTEIN'
-  AND a.confidence_score >= 8           -- 靶点指认可信
+  AND a.confidence_score >= 8           -- 靶点是单一蛋白（9=直接指认, 8=同源映射）
   AND act.pchembl_value IS NOT NULL     -- 只要能定量的
   AND act.standard_relation = '='       -- 排除删失数据
   AND act.data_validity_comment IS NULL -- 排除可疑数据
@@ -1117,7 +1126,8 @@ df = pd.read_sql_query(open('query.sql').read(), con)
 | --- | --- | --- |
 | 用了 `value` 而不是 `standard_value` | 单位混杂（µM 与 nM 混在一起），结论全错 | 永远用 `standard_*` 列 |
 | 忽略 `standard_relation` | 把 `>10 µM` 当成 10 µM，把「无活性」当成「弱活性」 | 定量建模时限定 `= '='`；或按删失数据处理 |
-| 不过滤 `confidence_score` | 把细胞表型、整体动物数据当成直接的靶点活性 | 建模用 `>= 8` |
+| 不过滤 `confidence_score` | 把归因到细胞、组织、整个生物体的数据当成单一蛋白上的活性 | 建模用 `>= 8`（单一蛋白）；只要直接实测则用 `= 9` |
+| 把 `confidence_score` 当成数据质量分 | 误以为低分 = 实验做得差；实际它描述的是靶点粒度与指认方式 | 见 §7.2；低分数据在表型筛选场景下完全可用 |
 | 混用不同 `standard_type` | IC50 与 Ki 与 %抑制率不可比 | 分开处理；至少分开 IC50/EC50 与 Ki/Kd |
 | 忽略 `potential_duplicate` / `data_validity_comment` | 同一数值被重复计数；纳入已知错误值 | 两者都加进过滤条件 |
 | 把化合物记录数当成化合物数 | `compound_records` 是文献级的，数量远大于唯一化合物 | 唯一化合物看 `molecule_dictionary` |
