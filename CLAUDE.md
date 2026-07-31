@@ -119,5 +119,27 @@ Step1_04  激活 assay → activity → 分子，分别给出效力/效能/证�
 
 ## 环境
 
-Python 3.8.10，标准库 + `requests`。没有 `sqlite3` 命令行，用 python 的 `sqlite3` 模块。
-注意 3.8 下 f-string 表达式内不能含反斜杠。
+micromamba 环境 **`GKA_in_Brain`**。micromamba 不在 PATH 上（`.bashrc` 里只有 alias，
+非交互 shell 取不到），脚本和命令里一律写全路径：
+
+```
+/home/sgao30/micromamba/bin/micromamba run -n GKA_in_Brain python xxx.py
+```
+
+| | |
+|---|---|
+| python | 3.11.15 |
+| rdkit | 2026.03.4 |
+| numpy | 2.4.6 |
+| pandas | 3.0.5 |
+| requests | 2.34.2（Step1_03 调 LLM 用） |
+| sqlite3 模块 | 3.53.4 |
+
+没有 `sqlite3` 命令行，用 python 的 `sqlite3` 模块。
+
+- **不要用系统 python（3.8.10）。** 那里的 rdkit 缺 numpy，
+  `Descriptors` / `Crippen` / `MurckoScaffold` 全部 import 失败，
+  只有 `rdMolDescriptors` 这类纯 C++ 接口能用。
+- Step1_01–04 的脚本在 3.11 下重跑，产物与 3.8 逐字节一致（只有报告时间戳变）。
+- **f-string 表达式内仍不能含反斜杠**——这条限制是 3.12（PEP 701）才放开的，
+  3.11 下照旧报 `SyntaxError`。用 `chr(92)` 绕开。
