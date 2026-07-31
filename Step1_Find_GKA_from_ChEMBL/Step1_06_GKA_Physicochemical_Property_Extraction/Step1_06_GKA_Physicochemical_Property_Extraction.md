@@ -2,7 +2,7 @@
 
 - ChEMBL 版本：**CHEMBL_37（2026-05-01）**
 - 数据库文件：`/ShangGaoAIProjects/GKA_in_Brain/ChEMBL/ChEMBL_37/chembl_37/chembl_37_sqlite/chembl_37.db`
-- 运行时间：2026-07-31 14:42:09
+- 运行时间：2026-07-31 14:46:41
 - 输入：`Step1_05_Followup_Candidates.csv`（Step1_05 后续实验清单）
 - 提取分子：**782** 个，全部命中
 
@@ -67,24 +67,81 @@
 
 > 这批分子是冲着**肝和胰腺**做的，不是冲着脑做的——PSA 中位数已经超过常用 CNS 上限，是意料之中的结果。**这不是筛选结论**，Step2 会用正式的判据重做。
 
-## 四、注解字段（大多为空，如实记录）
+## 四、结构警示（`compound_structural_alerts`）
+
+**284 / 782** 个分子命中结构警示，共 **473** 条。这是 medchem 责任标记（反应性基团、频繁命中骨架等），**不是筛选依据**——很多上市药也会命中，但下实验前该知道。
+
+| 警示集 | 条数 |
+| --- | ---: |
+| MLSMR | 268 |
+| Dundee | 200 |
+| Glaxo | 3 |
+| BMS | 2 |
+
+最常命中的 10 种：
+
+| 警示 | 条数 |
+| --- | ---: |
+| Hetero_hetero | 73 |
+| Long aliphatic chain | 47 |
+| Michael acceptor | 31 |
+| vinyl michael acceptor1 | 31 |
+| phosphor | 28 |
+| Michael acceptor 6 | 28 |
+| isolated alkene | 25 |
+| Phosphoric ester | 25 |
+| aniline | 23 |
+| triple bond | 23 |
+
+命中最多的 5 个分子：`CHEMBL1258093`（6 条，P4）、`CHEMBL2314794`（5 条，P4）、`CHEMBL2314795`（5 条，P4）、`CHEMBL2314796`（5 条，P4）、`CHEMBL2314811`（5 条，P4）。
+
+## 五、配体效率（`ligand_eff`）
+
+**726 / 782** 个分子有配体效率数据，共 **1,104** 条。这是把效力与分子大小/亲脂性放在一起看的派生量：
+
+| 指标 | 定义 | 中位 | 范围 |
+| --- | --- | ---: | --- |
+| `le` | LE：每个重原子贡献的结合能（kcal/mol/HA） | 0.29 | 0.18 – 0.48 |
+| `bei` | BEI：结合效率指数，pActivity / (MW/1000) | 14.85 | 9.18 – 23.60 |
+| `sei` | SEI：表面效率指数，pActivity / (PSA/100) | 6.50 | 3.64 – 17.06 |
+| `lle` | **LLE：pActivity − logP**，做「加脂肪换效力」取舍时看它 | 2.81 | -0.66 – 6.12 |
+
+**逐 activity 计算，这里给最优值与中位数，不做跨实验平均。** ChEMBL 对同一分子在不同 assay 下会算出多条，含义随该条 activity 的 assay 条件而变（葡萄糖浓度不同 EC50 就不同），**跨 assay 比较前要回明细核对**。
+
+## 六、注解字段（大多为空，如实记录）
 
 `-1` 是 ChEMBL 的「未标注」，不是 0。这批分子绝大多数是文献化合物，没进过开发流程，本来就不会有这些注解。
 
 | 字段 | 取值分布 |
 | --- | --- |
+| `molecule_pref_name` | 有值 6、空 776 |
+| `molecule_type` | `Small molecule`×669、`Unknown`×103、`(空)`×10 |
+| `structure_type` | `MOL`×782 |
 | `max_phase` | `(空)`×777、`2`×5 |
+| `first_approval` | `(空)`×782 |
+| `availability_type` | `-1`×777、`(空)`×5 |
+| `dosed_ingredient` | `0`×782 |
+| `therapeutic_flag` | `0`×782 |
 | `chirality` | `-1`×777、`1`×4、`2`×1 |
 | `prodrug` | `-1`×777、`0`×5 |
 | `natural_product` | `0`×780、`1`×2 |
 | `first_in_class` | `-1`×777、`0`×5 |
 | `inorganic_flag` | `-1`×777、`0`×5 |
-| `therapeutic_flag` | `0`×782 |
-| `availability_type` | `-1`×777、`(空)`×5 |
+| `polymer_flag` | `0`×782 |
 | `chemical_probe` | `0`×781、`1`×1 |
 | `orphan` | `-1`×777、`0`×5 |
+| `veterinary` | `-1`×777、`0`×5 |
+| `withdrawn_flag` | `0`×782 |
+| `black_box_warning` | `0`×782 |
+| `oral` | `0`×782 |
+| `parenteral` | `0`×782 |
+| `topical` | `0`×782 |
+| `usan_stem` | 有值 2、空 780 |
+| `usan_substem` | 有值 2、空 780 |
+| `usan_stem_definition` | 有值 2、空 780 |
+| `usan_year` | `(空)`×781、`2007`×1 |
 
-## 五、盐型归并与同义词
+## 七、盐型归并、同义词与源文献编号
 
 `molecule_hierarchy` 里 **781** 个分子本身就是母体，**1** 个是盐型/衍生记录（`is_parent = FALSE`，`parent_chembl_id` 给出母体）。
 
@@ -101,6 +158,17 @@
 | `CHEMBL1783734` | Piragliatin（INN）、Piragliatine（INN_FRENCH）、Piragliatina（INN_SPANISH）、R04389620（RESEARCH_CODE）、R04389620\（RESEARCH_CODE）、R |
 | `CHEMBL2165615` | Nerigliatin（INN）、Nerigliatine（INN_FRENCH）、Nerigliatina（INN_SPANISH）、Nerigliatin（OTHER）、Pf-04937319（OTHER）、PF-04937319（RE |
 | `CHEMBL5072532` | BMS-820132（PND） |
+
+`compound_records.compound_key`（论文/专利里的化合物编号）覆盖 **782 / 782** 个分子——回溯原文时用这个对号，比 ChEMBL ID 好使。
+
+## 八、本步骤没取的表
+
+| 表 | 覆盖 | 为什么没取 |
+| --- | --- | --- |
+| `compound_structures.molfile` | 782/782 | 2D 坐标块，体积大；结构已由 SMILES / InChI / InChIKey 完整表达，需要时随时可补 |
+| `drug_mechanism` | 3/782 | 药理注解不是理化性质。有数据的只有已上市/临床的那几个 |
+| `drug_indication` | 3/782 | 同上 |
+| `drug_warning`、`formulations`、`molecule_atc_classification` | 0/782 | 无数据 |
 
 ## 附：按 priority 的性质概览
 

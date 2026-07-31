@@ -81,21 +81,39 @@ PROP_COLUMNS = [
     "qed_weighted", "full_molformula", "np_likeness_score",
 ]
 
+# molecule_dictionary 的全部注解字段。绝大多数在这批分子上是 -1（未标注）或 0，
+# 但按项目约定**空值也是事实，如实记录不省略字段**。
+MD_COLUMNS = [
+    "molecule_pref_name", "molecule_type", "structure_type", "max_phase",
+    "first_approval", "availability_type", "dosed_ingredient", "therapeutic_flag",
+    "chirality", "prodrug", "natural_product", "first_in_class", "inorganic_flag",
+    "polymer_flag", "chemical_probe", "orphan", "veterinary", "withdrawn_flag",
+    "black_box_warning", "oral", "parenteral", "topical",
+    "usan_stem", "usan_substem", "usan_stem_definition", "usan_year",
+]
+
+# 配体效率：把效力和分子大小/亲脂性放在一起看的派生量。
+# LLE = pActivity − logP 是其中最常用的，做「加脂肪换效力」的取舍时看它。
+LIGEFF_COLUMNS = [
+    "n_ligand_eff", "le_max", "le_median", "bei_max", "bei_median",
+    "sei_max", "sei_median", "lle_max", "lle_median",
+]
+
 OUT_COLUMNS = (
-    # --- 身份 ---
-    ["molecule_chembl_id", "molregno", "molecule_pref_name", "molecule_type",
-     "structure_type", "max_phase", "first_approval", "availability_type",
-     "chirality", "prodrug", "natural_product", "therapeutic_flag",
-     "first_in_class", "inorganic_flag", "chemical_probe", "orphan",
-     "usan_stem", "usan_year"]
+    # --- 身份与注解 ---
+    ["molecule_chembl_id", "molregno"] + MD_COLUMNS
     # --- 母体/盐型 ---
-    + ["parent_molregno", "parent_chembl_id", "is_parent"]
+    + ["parent_molregno", "parent_chembl_id", "active_molregno", "is_parent"]
     # --- 结构 ---
     + ["canonical_smiles", "standard_inchi_key", "standard_inchi"]
     # --- 理化性质 ---
     + PROP_COLUMNS
-    # --- 同义词 ---
-    + ["n_synonyms", "synonyms"]
+    # --- 结构警示 ---
+    + ["n_structural_alerts", "structural_alert_sets", "structural_alerts"]
+    # --- 配体效率 ---
+    + LIGEFF_COLUMNS
+    # --- 同义词与源文献编号 ---
+    + ["n_synonyms", "synonyms", "n_compound_records", "compound_keys"]
     # --- 链路 ---
     + CHAIN_COLUMNS
 )
@@ -103,10 +121,12 @@ OUT_COLUMNS = (
 MOL_SQL = """
 SELECT md.chembl_id, md.molregno, md.pref_name, md.molecule_type,
        md.structure_type, md.max_phase, md.first_approval, md.availability_type,
-       md.chirality, md.prodrug, md.natural_product, md.therapeutic_flag,
-       md.first_in_class, md.inorganic_flag, md.chemical_probe, md.orphan,
-       md.usan_stem, md.usan_year,
-       mh.parent_molregno, pmd.chembl_id AS parent_chembl_id,
+       md.dosed_ingredient, md.therapeutic_flag, md.chirality, md.prodrug,
+       md.natural_product, md.first_in_class, md.inorganic_flag, md.polymer_flag,
+       md.chemical_probe, md.orphan, md.veterinary, md.withdrawn_flag,
+       md.black_box_warning, md.oral, md.parenteral, md.topical,
+       md.usan_stem, md.usan_substem, md.usan_stem_definition, md.usan_year,
+       mh.parent_molregno, mh.active_molregno, pmd.chembl_id AS parent_chembl_id,
        cs.canonical_smiles, cs.standard_inchi_key, cs.standard_inchi,
        cp.mw_freebase, cp.full_mwt, cp.alogp, cp.hba, cp.hbd, cp.psa, cp.rtb,
        cp.ro3_pass, cp.num_ro5_violations, cp.aromatic_rings, cp.heavy_atoms,
@@ -118,6 +138,32 @@ LEFT JOIN molecule_dictionary  pmd ON pmd.molregno = mh.parent_molregno
 LEFT JOIN compound_structures  cs  ON cs.molregno = md.molregno
 LEFT JOIN compound_properties  cp  ON cp.molregno = md.molregno
 WHERE md.chembl_id IN ({placeholders})
+"""
+
+ALERT_SQL = """
+SELECT md.chembl_id, ss.set_name, sa.alert_name
+FROM compound_structural_alerts csa
+JOIN molecule_dictionary   md ON md.molregno = csa.molregno
+JOIN structural_alerts     sa ON sa.alert_id = csa.alert_id
+JOIN structural_alert_sets ss ON ss.alert_set_id = sa.alert_set_id
+WHERE md.chembl_id IN ({placeholders})
+ORDER BY md.chembl_id, ss.set_name, sa.alert_name
+"""
+
+LIGEFF_SQL = """
+SELECT md.chembl_id, le.le, le.bei, le.sei, le.lle
+FROM ligand_eff le
+JOIN activities         a  ON a.activity_id = le.activity_id
+JOIN molecule_dictionary md ON md.molregno = a.molregno
+WHERE md.chembl_id IN ({placeholders})
+"""
+
+RECORD_SQL = """
+SELECT md.chembl_id, cr.compound_key
+FROM compound_records cr
+JOIN molecule_dictionary md ON md.molregno = cr.molregno
+WHERE md.chembl_id IN ({placeholders}) AND cr.compound_key IS NOT NULL
+ORDER BY md.chembl_id, cr.compound_key
 """
 
 SYN_SQL = """
@@ -144,6 +190,16 @@ def chembl_version(con: sqlite3.Connection) -> str:
     return f"{row[0]}（{str(row[1])[:10]}）" if row else "未知"
 
 
+def agg(vals: list, prefix: str) -> dict:
+    """配体效率是**逐 activity** 的，这里给最优值与中位数，不做跨实验平均。"""
+    out = {f"{prefix}_max": "", f"{prefix}_median": ""}
+    v = [x for x in vals if x is not None]
+    if v:
+        out[f"{prefix}_max"] = round(max(v), 3)
+        out[f"{prefix}_median"] = round(statistics.median(v), 3)
+    return out
+
+
 def fetch(con: sqlite3.Connection, cands: list) -> tuple:
     ids = [c["molecule_chembl_id"] for c in cands]
     ph = ",".join("?" * len(ids))
@@ -152,18 +208,49 @@ def fetch(con: sqlite3.Connection, cands: list) -> tuple:
     for r in con.execute(SYN_SQL.format(placeholders=ph), ids):
         syns[r["chembl_id"]].append({"type": r["syn_type"], "name": r["synonyms"]})
 
+    alerts = defaultdict(list)
+    for r in con.execute(ALERT_SQL.format(placeholders=ph), ids):
+        alerts[r["chembl_id"]].append({"set": r["set_name"], "alert": r["alert_name"]})
+
+    ligeff = defaultdict(list)
+    for r in con.execute(LIGEFF_SQL.format(placeholders=ph), ids):
+        ligeff[r["chembl_id"]].append(r)
+
+    keys = defaultdict(list)
+    for r in con.execute(RECORD_SQL.format(placeholders=ph), ids):
+        if r["compound_key"] not in keys[r["chembl_id"]]:
+            keys[r["chembl_id"]].append(r["compound_key"])
+
     by_id = {}
     for r in con.execute(MOL_SQL.format(placeholders=ph), ids):
         d = dict(r)
-        d["molecule_chembl_id"] = d.pop("chembl_id")
+        mid = d.pop("chembl_id")
+        d["molecule_chembl_id"] = mid
         d["molecule_pref_name"] = d.pop("pref_name")
         d["is_parent"] = ("TRUE" if (d["parent_molregno"] is None
                                      or d["parent_molregno"] == d["molregno"])
                           else "FALSE")
-        s = syns.get(d["molecule_chembl_id"], [])
+
+        s = syns.get(mid, [])
         d["n_synonyms"] = len(s)
         d["synonyms"] = json.dumps(s, ensure_ascii=False) if s else ""
-        by_id[d["molecule_chembl_id"]] = d
+
+        a = alerts.get(mid, [])
+        d["n_structural_alerts"] = len(a)
+        d["structural_alert_sets"] = (
+            json.dumps(sorted({x["set"] for x in a}), ensure_ascii=False) if a else "")
+        d["structural_alerts"] = json.dumps(a, ensure_ascii=False) if a else ""
+
+        le = ligeff.get(mid, [])
+        d["n_ligand_eff"] = len(le)
+        for field in ("le", "bei", "sei", "lle"):
+            d.update(agg([x[field] for x in le], field))
+
+        k = keys.get(mid, [])
+        d["n_compound_records"] = len(k)
+        d["compound_keys"] = json.dumps(k, ensure_ascii=False) if k else ""
+
+        by_id[mid] = d
 
     rows, missing = [], []
     for c in cands:
@@ -308,22 +395,89 @@ def write_report(rows, missing, path, in_csv, db, version) -> None:
     L.append("")
 
     # --- 注解 ---
-    L.append("## 四、注解字段（大多为空，如实记录）")
+    # --- 结构警示 ---
+    L.append("## 四、结构警示（`compound_structural_alerts`）")
+    L.append("")
+    n_al = sum(1 for r in rows if r.get("n_structural_alerts"))
+    tot_al = sum(int(r.get("n_structural_alerts") or 0) for r in rows)
+    L.append(f"**{n_al:,} / {n:,}** 个分子命中结构警示，共 **{tot_al:,}** 条。"
+             "这是 medchem 责任标记（反应性基团、频繁命中骨架等），"
+             "**不是筛选依据**——很多上市药也会命中，但下实验前该知道。")
+    L.append("")
+    sets_c, alert_c = Counter(), Counter()
+    for r in rows:
+        for a in json.loads(r["structural_alerts"] or "[]"):
+            sets_c[a["set"]] += 1
+            alert_c[a["alert"]] += 1
+    L.append("| 警示集 | 条数 |")
+    L.append("| --- | ---: |")
+    for k, v in sets_c.most_common():
+        L.append(f"| {k} | {v:,} |")
+    L.append("")
+    L.append("最常命中的 10 种：")
+    L.append("")
+    L.append("| 警示 | 条数 |")
+    L.append("| --- | ---: |")
+    for k, v in alert_c.most_common(10):
+        L.append(f"| {k} | {v:,} |")
+    L.append("")
+    hi = sorted((r for r in rows if r.get("n_structural_alerts")),
+                key=lambda r: -int(r["n_structural_alerts"]))[:5]
+    if hi:
+        L.append("命中最多的 5 个分子：" + "、".join(
+            f"`{r['molecule_chembl_id']}`（{r['n_structural_alerts']} 条，{r.get('priority')}）"
+            for r in hi) + "。")
+        L.append("")
+
+    # --- 配体效率 ---
+    L.append("## 五、配体效率（`ligand_eff`）")
+    L.append("")
+    n_le = sum(1 for r in rows if r.get("n_ligand_eff"))
+    tot_le = sum(int(r.get("n_ligand_eff") or 0) for r in rows)
+    L.append(f"**{n_le:,} / {n:,}** 个分子有配体效率数据，共 **{tot_le:,}** 条。"
+             "这是把效力与分子大小/亲脂性放在一起看的派生量：")
+    L.append("")
+    L.append("| 指标 | 定义 | 中位 | 范围 |")
+    L.append("| --- | --- | ---: | --- |")
+    le_desc = {
+        "le": ("LE：每个重原子贡献的结合能（kcal/mol/HA）", "le_max"),
+        "bei": ("BEI：结合效率指数，pActivity / (MW/1000)", "bei_max"),
+        "sei": ("SEI：表面效率指数，pActivity / (PSA/100)", "sei_max"),
+        "lle": ("**LLE：pActivity − logP**，做「加脂肪换效力」取舍时看它", "lle_max"),
+    }
+    for f, (d, col) in le_desc.items():
+        v = num(rows, col)
+        if v:
+            L.append(f"| `{f}` | {d} | {statistics.median(v):.2f} | "
+                     f"{min(v):.2f} – {max(v):.2f} |")
+        else:
+            L.append(f"| `{f}` | {d} | — | — |")
+    L.append("")
+    L.append("**逐 activity 计算，这里给最优值与中位数，不做跨实验平均。** "
+             "ChEMBL 对同一分子在不同 assay 下会算出多条，含义随该条 activity 的 "
+             "assay 条件而变（葡萄糖浓度不同 EC50 就不同），"
+             "**跨 assay 比较前要回明细核对**。")
+    L.append("")
+
+    L.append("## 六、注解字段（大多为空，如实记录）")
     L.append("")
     L.append("`-1` 是 ChEMBL 的「未标注」，不是 0。这批分子绝大多数是文献化合物，"
              "没进过开发流程，本来就不会有这些注解。")
     L.append("")
     L.append("| 字段 | 取值分布 |")
     L.append("| --- | --- |")
-    for f in ("max_phase", "chirality", "prodrug", "natural_product",
-              "first_in_class", "inorganic_flag", "therapeutic_flag",
-              "availability_type", "chemical_probe", "orphan"):
+    for f in MD_COLUMNS:
+        if f in ("molecule_pref_name", "usan_stem", "usan_substem",
+                 "usan_stem_definition"):
+            have = sum(1 for r in rows if r.get(f) not in (None, ""))
+            L.append(f"| `{f}` | 有值 {have:,}、空 {n - have:,} |")
+            continue
         c = Counter(str(r.get(f)) if r.get(f) not in (None, "") else "(空)" for r in rows)
         L.append(f"| `{f}` | " + "、".join(f"`{k}`×{v:,}" for k, v in c.most_common(5)) + " |")
     L.append("")
 
     # --- 盐型与同义词 ---
-    L.append("## 五、盐型归并与同义词")
+    L.append("## 七、盐型归并、同义词与源文献编号")
     L.append("")
     n_salt = sum(1 for r in rows if r.get("is_parent") == "FALSE")
     L.append(f"`molecule_hierarchy` 里 **{n - n_salt:,}** 个分子本身就是母体，"
@@ -351,9 +505,25 @@ def write_report(rows, missing, path, in_csv, db, version) -> None:
                                  for s in json.loads(r["synonyms"]))
                 L.append(f"| `{r['molecule_chembl_id']}` | {names[:120]} |")
     L.append("")
+    n_key = sum(1 for r in rows if r.get("n_compound_records"))
+    L.append(f"`compound_records.compound_key`（论文/专利里的化合物编号）覆盖 "
+             f"**{n_key:,} / {n:,}** 个分子——回溯原文时用这个对号，比 ChEMBL ID 好使。")
+    L.append("")
+
+    L.append("## 八、本步骤没取的表")
+    L.append("")
+    L.append("| 表 | 覆盖 | 为什么没取 |")
+    L.append("| --- | --- | --- |")
+    L.append("| `compound_structures.molfile` | 782/782 | 2D 坐标块，体积大；"
+             "结构已由 SMILES / InChI / InChIKey 完整表达，需要时随时可补 |")
+    L.append("| `drug_mechanism` | 3/782 | 药理注解不是理化性质。"
+             "有数据的只有已上市/临床的那几个 |")
+    L.append("| `drug_indication` | 3/782 | 同上 |")
+    L.append("| `drug_warning`、`formulations`、`molecule_atc_classification` | 0/782 | 无数据 |")
+    L.append("")
 
     if missing:
-        L.append("## 六、未命中的分子")
+        L.append("## 九、未命中的分子")
         L.append("")
         L.append("、".join(f"`{m}`" for m in missing))
         L.append("")
@@ -410,6 +580,13 @@ def main() -> int:
     print(f"  有 compound_properties：{have_props:,}")
     print(f"  有 SMILES：            {sum(1 for r in rows if r.get('canonical_smiles')):,}")
     print(f"  非母体（盐型等）：      {sum(1 for r in rows if r.get('is_parent') == 'FALSE'):,}")
+    print(f"  有结构警示：            "
+          f"{sum(1 for r in rows if r.get('n_structural_alerts')):,}"
+          f"（共 {sum(int(r.get('n_structural_alerts') or 0) for r in rows):,} 条）")
+    print(f"  有配体效率：            "
+          f"{sum(1 for r in rows if r.get('n_ligand_eff')):,}"
+          f"（共 {sum(int(r.get('n_ligand_eff') or 0) for r in rows):,} 条）")
+    print(f"  有源文献编号：          {sum(1 for r in rows if r.get('n_compound_records')):,}")
     print(f"  有同义词：              {sum(1 for r in rows if r.get('n_synonyms')):,}")
 
     rows.sort(key=lambda r: (r.get("priority") or "ZZ", r["molecule_chembl_id"]))
