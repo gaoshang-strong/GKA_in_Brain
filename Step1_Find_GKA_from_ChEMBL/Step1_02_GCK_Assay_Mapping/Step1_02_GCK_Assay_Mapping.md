@@ -2,7 +2,7 @@
 
 - ChEMBL 版本：**CHEMBL_37（2026-05-01）**
 - 数据库文件：`/ShangGaoAIProjects/GKA_in_Brain/ChEMBL/ChEMBL_37/chembl_37/chembl_37_sqlite/chembl_37.db`
-- 运行时间：2026-07-30 21:55:11
+- 运行时间：2026-07-30 22:06:28
 - 输入 tid：20095, 117123
 - assay 总数：**228**，其上活性数据点合计 **3,262**
 

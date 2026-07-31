@@ -71,7 +71,7 @@ COLUMNS = [
     "assay_classifications", "n_assay_classifications",
     # --- 活性数据规模 ---
     "n_activities", "n_activities_with_pchembl", "n_distinct_compounds",
-    "standard_types",
+    "standard_types", "activity_comments", "n_activity_comments",
 ]
 
 ASSAY_SQL = """
@@ -155,6 +155,16 @@ WHERE assay_id IN ({placeholders})
 ORDER BY assay_id, assay_param_id
 """
 
+# activity_comment 是自由文本备注（"Not Active"、"Dose-dependent effect" 等），
+# 对判断该 assay 测的是什么有参考价值，按取值去重后聚合。
+COMMENT_SQL = """
+SELECT assay_id, activity_comment AS c, COUNT(*) AS n
+FROM activities
+WHERE assay_id IN ({placeholders}) AND activity_comment IS NOT NULL
+GROUP BY assay_id, activity_comment
+ORDER BY assay_id, n DESC
+"""
+
 CLASS_SQL = """
 SELECT acm.assay_id, ac.assay_class_id, ac.l1, ac.l2, ac.l3, ac.class_type, ac.source
 FROM assay_class_map acm
@@ -221,12 +231,18 @@ def fetch(con: sqlite3.Connection, tids: list[int]) -> list[dict]:
     for r in con.execute(CLASS_SQL.format(placeholders=ph2), ids):
         classes.setdefault(r["assay_id"], []).append(_compact(r, ckeys))
 
+    comments: dict = {}
+    for r in con.execute(COMMENT_SQL.format(placeholders=ph2), ids):
+        comments.setdefault(r["assay_id"], []).append({"comment": r["c"], "n": r["n"]})
+
     for row in rows:
         aid = row["assay_id"]
         row["assay_parameters"] = _json(params.get(aid, []))
         row["n_assay_parameters"] = len(params.get(aid, []))
         row["assay_classifications"] = _json(classes.get(aid, []))
         row["n_assay_classifications"] = len(classes.get(aid, []))
+        row["activity_comments"] = _json(comments.get(aid, []))
+        row["n_activity_comments"] = len(comments.get(aid, []))
         c = counts.get(row["assay_id"])
         row["n_activities"] = c["n_act"] if c else 0
         row["n_activities_with_pchembl"] = c["n_pchembl"] if c else 0

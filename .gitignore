@@ -33,3 +33,6 @@ venv/
 .vscode/
 .idea/
 *.swp
+
+# LLM 响应缓存（可由脚本重建）
+.llm_cache.json
