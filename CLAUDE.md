@@ -117,10 +117,17 @@ Step1_07  drug_mechanism / usan_stems / molecule_synonyms → 补回零活性的
   - **`usan_stems`**：`-gliatin` 的官方注释就是 `glucokinase activator`，
     按药名后缀就能认出 GKA。`molecule_dictionary.usan_stem` 有的为空，
     要用 `molecule_synonyms LIKE '%gliatin%'` 兜底。
-- **⚠ 同一个药在 ChEMBL 里有多个 chembl_id，`molecule_hierarchy` 归并不全。**
-  MK-0941 = `CHEMBL3580737`（游离碱，有活性）+ `CHEMBL4297302`（药物条目，0 活性）；
-  Globalagliatin = `CHEMBL4297399`（LY-2608204，研发代号）+ `CHEMBL5095182`（盐酸盐）。
-  这几对之间**没有 parent 关系**。**去重要按结构（InChIKey）或人工归并，不能按 ID 计数。**
+- **⚠ 同一个药以「游离碱 + 盐」两个 chembl_id 存在，而 InChIKey 归并不了它们，
+  `molecule_hierarchy.parent_molregno` 才行。** 实测两对：
+  - MK-0941：`CHEMBL3580737` 游离碱（有活性）+ `CHEMBL4297302` **甲磺酸盐**
+    （SMILES 带 `.CS(=O)(=O)O`，0 活性），`parent_molregno` → 游离碱
+  - Globalagliatin：`CHEMBL4297399` LY-2608204 + `CHEMBL5095182` **盐酸盐**
+    （SMILES 带 `Cl.`），`parent_molregno` → 前者
+
+  **盐与游离碱的 InChIKey 完全不同**（`KJSGTWFWVTYPFZ-…` vs `PIDNRTWDGDJKSQ-…`），
+  所以**按 InChIKey 去重会把同一个药算成两个**。
+  **药物层去重用 `parent_molregno`；跨库对齐（如与 SureChEMBL）才用 InChIKey，
+  且要先归到母体再取 key。** 两个场景用不同的键，别混。
 - **⚠ 任何依赖「被测了多少次 / 测了几个轴」的量，都不能进排序或分层——
   量到的会是数据可得性，不是分子质量。** 这条在 Step1_05 上栽过两次：
   - **证据强度**（重复 assay 数、独立文献数）：三个 phase 2 药 MK-0941、AZD-1656、
