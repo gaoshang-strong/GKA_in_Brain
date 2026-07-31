@@ -25,6 +25,14 @@ review_required
 
 这一步完成后，才能确定哪些 assay 应用于搜索真正的 GKA 小分子。
 
+判断逻辑：
+
+1，assay 描述：是否明确写着 activation、activator、increased activity、positive allosteric modulation。
+2，activity 指标：如 activation EC50、AC50、% activation、fold activation。
+3，作用方向：确认数值代表“活性升高”，而不是 IC50、抑制率或单纯结合。
+
+判断流程：
+
 1, 先用规则分类明确记录
 例如描述中明确出现 activation、activator、inhibition、binding、GKRP interaction。
 代码：Step1_03_GCK_Assay_Classification.py
