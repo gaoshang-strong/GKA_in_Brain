@@ -26,6 +26,7 @@ Step1_04  激活 assay → activity → 分子，分别给出效力/效能/证�
 Step1_05  分子层方向判定 → 排除打标 → 效力单轴分档排序 → 骨架去冗余 → 候选表
 Step1_06  候选分子 → molecule_dictionary/compound_structures/compound_properties
           /molecule_hierarchy/molecule_synonyms → 理化性质主表
+Step1_07  drug_mechanism / usan_stems / molecule_synonyms → 补回零活性的临床 GKA
 ```
 
 已锚定的 GCK 靶点（ChEMBL 37）：
@@ -100,6 +101,26 @@ Step1_06  候选分子 → molecule_dictionary/compound_structures/compound_prop
   还有极性问题：`S0.5`/`S50`/`Km` 是**值越小激活越强**，与 `FC` 方向相反；
   它们测的是酶对葡萄糖的半饱和常数（GKA 把它从野生型 ~7 mM 拉到 0.5–2 mM），
   是机制读数，**不是化合物效力**，当效力用会得出「EC50 = 0.6 mM」这种量级错误。
+- **⚠ 整条链路挂在 `activities` 上，零活性记录的分子在结构上不可见。**
+  `靶点 → assays → activity → 分子` 这条路走不到「有 ChEMBL ID 但没有活性数据」的分子。
+  **ChEMBL 的分子有两条独立入口**：从文献活性数据抽取，和从药名/临床登记册收录
+  （`compound_records.doc_type = DATASET`，来源 `USAN` / `INN` / `ATC` / `CANDIDATES`）。
+  实测：**6 个带 `-gliatin` 词干的临床 GKA 里有 4 个不在 Step1_06 的 782 个候选中**，
+  包括唯一的 III 期药**多格列艾汀**（`CHEMBL4297508`，中国已上市，`activities = 0`）。
+  第三种漏法：`CHEMBL4297399` LY-2608204 有 6 条活性，但全来自 SARS_COV_2 / HDAC6
+  筛选数据集，**没有一条打在 GCK 上**。
+  补救见 `Step1_07`，两条独立锚定路径：
+  - **`drug_mechanism`**：挂 `CHEMBL3820` 的 6 条，`action_type` 全是 `ACTIVATOR`、
+    `mechanism_of_action` 全是 "Hexokinase type IV activator"。
+    **这是人工审编的方向标注**——Step1_03/05 用规则 + LLM 从 assay 描述推的那个结论，
+    这里现成且更可靠。**做方向判定前先查这张表。**
+  - **`usan_stems`**：`-gliatin` 的官方注释就是 `glucokinase activator`，
+    按药名后缀就能认出 GKA。`molecule_dictionary.usan_stem` 有的为空，
+    要用 `molecule_synonyms LIKE '%gliatin%'` 兜底。
+- **⚠ 同一个药在 ChEMBL 里有多个 chembl_id，`molecule_hierarchy` 归并不全。**
+  MK-0941 = `CHEMBL3580737`（游离碱，有活性）+ `CHEMBL4297302`（药物条目，0 活性）；
+  Globalagliatin = `CHEMBL4297399`（LY-2608204，研发代号）+ `CHEMBL5095182`（盐酸盐）。
+  这几对之间**没有 parent 关系**。**去重要按结构（InChIKey）或人工归并，不能按 ID 计数。**
 - **⚠ 任何依赖「被测了多少次 / 测了几个轴」的量，都不能进排序或分层——
   量到的会是数据可得性，不是分子质量。** 这条在 Step1_05 上栽过两次：
   - **证据强度**（重复 assay 数、独立文献数）：三个 phase 2 药 MK-0941、AZD-1656、
@@ -118,10 +139,25 @@ Step1_06  候选分子 → molecule_dictionary/compound_structures/compound_prop
   取 7.0 / 6.5，自检只过 4/6：Ro-28-1675 跨实验 EC50 是 127–690 nM
   （pAct 中位 6.39）、Piraglitin 是 364–6320 nM（6.145）——
   **已知临床 GKA 本来就在几百 nM 这一档**，阈值把临床药从中间劈开了。
-  已知临床/参比 GKA 共 6 个，是现成的标尺：
-  `CHEMBL1096435` Ro-28-1675、`CHEMBL1783734` Piraglitin、`CHEMBL2165615` Neriglitin、
-  `CHEMBL2165620` PF-04991532、`CHEMBL3219124` AZD-1656、`CHEMBL3580737` MK-0941。
-  **每步筛选都该拿它们自检**，落不进候选说明规则错了，不是数据错了。
+  **阳性对照集（11 个，Step1_07 后的完整版）**，每步筛选都该拿它们自检，
+  落不进候选说明规则错了，不是数据错了：
+
+  | ChEMBL ID | 名称 | phase | 备注 |
+  |---|---|---|---|
+  | `CHEMBL4297508` | Dorzagliatin（多格列艾汀/Sinogliatin） | 3 | 中国已上市，**0 活性** |
+  | `CHEMBL1783734` | Piraglitin | 2 | |
+  | `CHEMBL2165615` | Neriglitin | 2 | |
+  | `CHEMBL2165620` | PF-04991532 | 2 | |
+  | `CHEMBL3219124` | AZD-1656 | 2 | |
+  | `CHEMBL3580737` | MK-0941 游离碱 | 2 | 与下一条是同一个药 |
+  | `CHEMBL4297302` | MK-0941 药物条目 | 2 | **0 活性** |
+  | `CHEMBL4297399` | LY-2608204 / Globalagliatin | 2 | 活性全在别的靶点上 |
+  | `CHEMBL5095182` | Globalagliatin 盐酸盐 | 1 | 与上一条同药，**0 活性** |
+  | `CHEMBL5095262` | Cadisegliatin | 2 | **0 活性** |
+  | `CHEMBL5072532` | BMS-820132 | — | 在 782 里 |
+
+  另有 `CHEMBL1096435` Ro-28-1675——是文献常用**参比化合物**不是临床药，
+  证据等级高但效力只有中位水平，适合当「规则会不会把参比化合物排下去」的探针。
 - **收窄候选靠骨架，不靠阈值**：1,333 个分子只有 521 个 Murcko 骨架，
   最大一簇 46 个；效力 ≥7.0 的 264 个分子只归属 122 个骨架。
   直接按效力取 top-N 会拿到同一篇 SAR 论文的一串同系物——看着 50 个，其实 2 个化学起点。
