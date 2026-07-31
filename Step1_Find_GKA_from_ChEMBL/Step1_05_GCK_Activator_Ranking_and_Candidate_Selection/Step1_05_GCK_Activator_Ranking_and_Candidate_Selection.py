@@ -115,12 +115,23 @@ THRESH = {
 # ---------------------------------------------------------------------------
 # 二、分层与排序
 # ---------------------------------------------------------------------------
-# 阈值由阳性对照标定，不是按整体分布拍的。最初取 7.0 / 6.5（EC50 ≤ 100 / 316 nM），
-# 自检只过 4/6：Ro-28-1675 跨 4 个实验的 EC50 是 127–690 nM（pAct 中位 6.39），
-# Piraglitin 是 364–6320 nM（中位 6.145）——**已知临床 GKA 本来就在几百 nM 这一档**，
-# 原阈值把临床药从中间劈开了。改按对照的实际下限（6.145）设 B 层门槛。
-TIER_A_PACT = 6.5    # A 层：效力门槛 + 需要正向效能佐证（双证）
-TIER_B_PACT = 6.0    # B 层：效力门槛（缺效能读数不代表更差，只是只测了一个轴）
+# 分档只用效力单轴。**不要把效能佐证折进分档**——初版这么做过（A 层 = 效力 + 效能双证），
+# 实测的结果是这条线量的不是分子好坏，而是「这个分子被测了多少次」：
+#     单 assay 的分子只有 14% 有效能记录，多 assay 的有 67%
+# pAct ≥ 6.5 的 548 个分子里 343 个仅因 ChEMBL 没测效能就掉进下一层，
+# A/B 两层的效力值域几乎完全重叠（A 6.50–8.78，B 6.00–8.72），
+# 有 223 个 B 层分子的效力 ≥ A 层中位数——比 A 层总数还多。
+# 结论：效能有无是**数据可得性**，作独立标记列 `has_efficacy_corroboration`，不进分档。
+POTENCY_BANDS = [
+    (7.5, 99.0, "≥7.5（EC50 ≤ 32 nM）"),
+    (7.0, 7.5, "7.0–7.5（32–100 nM）"),
+    (6.5, 7.0, "6.5–7.0（0.1–0.32 µM）"),
+    (6.0, 6.5, "6.0–6.5（0.32–1 µM）"),
+    (0.0, 6.0, "<6.0（> 1 µM）"),
+]
+BAND_NO_POTENCY = "无可定量效力"
+# 阳性对照必须落在这条线以上。由对照标定：Piraglitin 的 pAct 中位 6.145 是 6 个里最低的。
+CONTROL_MIN_PACT = 6.0
 SPREAD_DIVERGENT = 1.0   # pActivity 极差 > 1（10 倍）算分歧
 
 # 阳性对照：已知临床/参比 GKA，规则跑完必须落进 A/B 层
@@ -141,10 +152,11 @@ OUT_COLUMNS = [
     "n_direction_activation", "n_direction_no_activation", "n_direction_undecidable",
     # --- 入选与排除 ---
     "included", "exclude_reason", "flags",
-    # --- 排序与分层 ---
-    "tier", "rank_overall", "rank_in_tier",
+    # --- 排序与分档（只用效力单轴）---
+    "potency_band", "rank_overall", "rank_in_band",
     "pactivity_median", "pactivity_max", "pactivity_spread", "potency_nm_min",
-    # --- 效能（并列展示，不参与排序）---
+    # --- 效能（并列展示，不参与排序，也不参与分档）---
+    "has_efficacy_corroboration",
     "efficacy_fold_max", "efficacy_pct_max", "n_efficacy_records",
     # --- 证据（并列展示，不参与排序）---
     "evidence_level", "evidence_consistency", "n_assays", "n_docs",
@@ -379,36 +391,33 @@ def build_rows(mols: list, acts: list, baselines: dict) -> list:
     return rows
 
 
-def assign_tiers(rows: list) -> None:
-    """分层 + 层内排序。排序键单一：pactivity_median。"""
+def assign_bands(rows: list) -> None:
+    """按效力单轴分档 + 档内排序。排序键单一：pactivity_median。"""
     for r in rows:
+        # 效能佐证是独立标记，**不参与分档**
+        r["has_efficacy_corroboration"] = (
+            "TRUE" if r["n_direction_activation"] > 0 else "FALSE")
         if r["included"] != "TRUE":
-            r["tier"] = ""
+            r["potency_band"] = ""
             continue
         pa = r["_pa_med"]
         if pa is None:
-            r["tier"] = "无效力（只有效能/机制读数）"
+            r["potency_band"] = BAND_NO_POTENCY
             continue
-        pos_eff = r["n_direction_activation"] > 0
-        if pa >= TIER_A_PACT and pos_eff:
-            r["tier"] = "A"
-        elif pa >= TIER_B_PACT:
-            r["tier"] = "B"
-        else:
-            r["tier"] = "C"
+        r["potency_band"] = next(lab for lo, hi, lab in POTENCY_BANDS if lo <= pa < hi)
 
     ranked = [r for r in rows if r["included"] == "TRUE" and r["_pa_med"] is not None]
     ranked.sort(key=lambda r: (-r["_pa_med"], -(r["_pa_max"] or 0),
                                r["molecule_chembl_id"]))
     for i, r in enumerate(ranked, 1):
         r["rank_overall"] = i
-    per_tier = defaultdict(int)
+    per_band = defaultdict(int)
     for r in ranked:
-        per_tier[r["tier"]] += 1
-        r["rank_in_tier"] = per_tier[r["tier"]]
+        per_band[r["potency_band"]] += 1
+        r["rank_in_band"] = per_band[r["potency_band"]]
     for r in rows:
         r.setdefault("rank_overall", "")
-        r.setdefault("rank_in_tier", "")
+        r.setdefault("rank_in_band", "")
 
 
 def assign_scaffolds(rows: list) -> None:
@@ -545,31 +554,45 @@ def write_report(rows, acts, baselines, path, mol_csv, act_csv, version, db) -> 
     L.append("")
 
     # --- 分层 ---
-    L.append("## 三、分层与排序")
+    L.append("## 三、效力分档与排序")
     L.append("")
-    L.append(f"排序键 **`pactivity_median`**（单一，不合成总分）。"
-             f"用中位数不用最大值：多数分子只有一个 assay 时两者相等，"
-             f"多 assay 时中位数抗单点异常。")
+    L.append("排序键 **`pactivity_median`**（单一，不合成总分）。"
+             "用中位数不用最大值：多数分子只有一个 assay 时两者相等，"
+             "多 assay 时中位数抗单点异常。")
     L.append("")
-    tc = Counter(r["tier"] for r in inc)
-    td = {"A": f"pActivity 中位 ≥ {TIER_A_PACT}（EC50 ≤ ~320 nM）**且**有正向效能佐证",
-          "B": f"pActivity 中位 ≥ {TIER_B_PACT}（EC50 ≤ 1 µM）",
-          "C": "其余有可定量效力的",
-          "无效力（只有效能/机制读数）": "有激活证据但没有可定量效力值，无法排序"}
-    L.append("| 层 | 分子数 | 条件 |")
-    L.append("| --- | ---: | --- |")
-    for k in ("A", "B", "C", "无效力（只有效能/机制读数）"):
-        if tc.get(k):
-            L.append(f"| {k} | {tc[k]:,} | {td[k]} |")
+    L.append("**分档只用效力单轴。** 各档的「有效能佐证」比例在表里并列给出——"
+             "它在各档之间没有规律，说明它是**数据可得性**而不是分子质量，"
+             "所以它是独立标记列 `has_efficacy_corroboration`，不参与分档。")
     L.append("")
-    L.append("**阈值是被阳性对照标定出来的，不是按整体分布拍的。** 最初取 7.0 / 6.5"
-             "（EC50 ≤ 100 / 316 nM），自检只过 4/6——Ro-28-1675 跨 4 个实验的 EC50 是"
-             " 127–690 nM（pAct 中位 6.39），Piraglitin 是 364–6320 nM（中位 6.145）。"
-             "**已知临床 GKA 本来就在几百 nM 这一档**，原阈值把临床药从中间劈开了，"
-             "说明阈值错了而不是药不好。现按对照的实际下限重设。")
+    bc = Counter(r["potency_band"] for r in inc)
+    L.append("| 效力档 | 分子数 | 有效能佐证 | 骨架数 | 阳性对照 |")
+    L.append("| --- | ---: | ---: | ---: | --- |")
+    for _, _, lab in POTENCY_BANDS + [(None, None, BAND_NO_POTENCY)]:
+        g = [r for r in inc if r["potency_band"] == lab]
+        if not g:
+            continue
+        eff = sum(1 for r in g if r["has_efficacy_corroboration"] == "TRUE")
+        scf = len({r["murcko_scaffold"] for r in g if r["murcko_scaffold"]})
+        ctl = [POSITIVE_CONTROLS[r["molecule_chembl_id"]] for r in g
+               if r["molecule_chembl_id"] in POSITIVE_CONTROLS]
+        L.append(f"| {lab} | {len(g):,} | {eff:,}（{100 * eff / len(g):.0f}%） | "
+                 f"{scf:,} | {'、'.join(ctl) or '—'} |")
     L.append("")
-    L.append("**B 层不等于比 A 层差**：A 要求效力与效能双证，落在 B 的分子里有一部分"
-             "（如 MK-0941、AZD-1656）只是 ChEMBL 里没有效能读数，只测了效力这一个轴。")
+    L.append("### 为什么不把效能折进分档")
+    L.append("")
+    L.append("初版这么做过（A 层 = 效力 ≥ 6.5 **且**有效能佐证，B 层 = 效力 ≥ 6.0），"
+             "实测下来这条线量的不是分子好坏，而是**这个分子被测了多少次**：")
+    L.append("")
+    L.append("- 单 assay 的分子只有 **14%** 有效能记录，多 assay 的有 **67%**")
+    L.append("- pAct ≥ 6.5 的 548 个分子里，**343 个仅因 ChEMBL 没测效能**就掉进下一层")
+    L.append("- A / B 两层的效力值域几乎完全重叠（A 6.50–8.78，B 6.00–8.72），"
+             "有 **223 个** B 层分子的效力 ≥ A 层中位数——比 A 层总数（169）还多")
+    L.append("- MK-0941（pAct 8.02）、AZD-1656（7.55）这两个 phase 2 药因为没有效能读数"
+             "全部落在 B 层")
+    L.append("")
+    L.append("这与「证据强度不能进排序键」是同一个错误的两种形态：**任何依赖"
+             "「测了几次 / 测了几个轴」的量，放进排序或分层，量到的都是数据可得性。**"
+             "改为效力单轴分档后，6 个阳性对照全部落在 ≥6.0 的四档里。")
     L.append("")
 
     # --- 骨架 ---
@@ -587,11 +610,11 @@ def write_report(rows, acts, baselines, path, mol_csv, act_csv, version, db) -> 
              "不做骨架聚类，top-50 会是两篇 SAR 论文的同系物列表——"
              "看着 50 个，其实 2 个化学起点。")
     L.append("")
-    L.append("A/B 层里骨架最集中的 10 簇：")
+    L.append("效力 ≥ 6.5 的分子里骨架最集中的 10 簇：")
     L.append("")
-    ab = [r for r in inc if r["tier"] in ("A", "B")]
+    ab = [r for r in inc if r["_pa_med"] is not None and r["_pa_med"] >= 6.5]
     abc = Counter(r["murcko_scaffold"] for r in ab if r["murcko_scaffold"])
-    L.append("| 骨架 | A/B 层分子数 | 代表分子 |")
+    L.append("| 骨架 | ≥6.5 的分子数 | 代表分子 |")
     L.append("| --- | ---: | --- |")
     for scaf, n in abc.most_common(10):
         rep = next((r["molecule_chembl_id"] for r in ab
@@ -603,64 +626,81 @@ def write_report(rows, acts, baselines, path, mol_csv, act_csv, version, db) -> 
     # --- 自检 ---
     L.append("## 五、阳性对照自检")
     L.append("")
-    L.append("6 个已知临床/参比 GKA。规则跑完它们**必须落进 A/B 层**——"
-             "落不进说明规则有问题，不是数据有问题。")
+    L.append(f"6 个已知临床/参比 GKA。规则跑完它们**必须落进 pActivity ≥ "
+             f"{CONTROL_MIN_PACT} 的档**——落不进说明规则有问题，不是数据有问题。")
     L.append("")
-    L.append("| 分子 | 名称 | phase | direction | 层 | 层内名次 | pAct 中位 | 证据 |")
-    L.append("| --- | --- | --- | --- | --- | ---: | ---: | --- |")
-    ok = True
+    L.append("| 分子 | 名称 | phase | direction | 效力档 | 档内名次 | pAct 中位 | "
+             "效能佐证 | 证据 |")
+    L.append("| --- | --- | --- | --- | --- | ---: | ---: | :---: | --- |")
+    n_ok = 0
     for mid, name in POSITIVE_CONTROLS.items():
         r = next((x for x in rows if x["molecule_chembl_id"] == mid), None)
         if r is None:
-            L.append(f"| `{mid}` | {name} | — | **不在输入里** | — | — | — | — |")
-            ok = False
+            L.append(f"| `{mid}` | {name} | — | **不在输入里** | — | — | — | — | — |")
             continue
-        tier = r["tier"] or "（排除）"
-        if tier not in ("A", "B"):
-            ok = False
+        pa = r["_pa_med"]
+        passed = r["included"] == "TRUE" and pa is not None and pa >= CONTROL_MIN_PACT
+        n_ok += 1 if passed else 0
+        band = r["potency_band"] or "（排除）"
         L.append(f"| `{mid}` | {name} | {r['max_phase'] or '—'} | {r['direction']} | "
-                 f"**{tier}** | {r['rank_in_tier'] or '—'} | "
-                 f"{r['pactivity_median'] or '—'} | {r['evidence_level']} |")
+                 f"**{band}** | {r['rank_in_band'] or '—'} | "
+                 f"{r['pactivity_median'] or '—'} | "
+                 f"{'✓' if r['has_efficacy_corroboration'] == 'TRUE' else '—'} | "
+                 f"{r['evidence_level']} |")
+    ok = n_ok == len(POSITIVE_CONTROLS)
     L.append("")
     L.append(f"**自检结论：{'通过' if ok else '未通过'}**"
-             f"（{'6/6' if ok else str(sum(1 for m in POSITIVE_CONTROLS if next((x for x in rows if x['molecule_chembl_id'] == m), {}).get('tier') in ('A', 'B')))+'/6'}"
-             " 落在 A/B 层）。")
+             f"（{n_ok}/{len(POSITIVE_CONTROLS)} 落在 ≥{CONTROL_MIN_PACT} 的档）。")
     L.append("")
-    L.append("> 注意三个 phase 2 药的证据等级是「弱」，参比化合物 Ro-28-1675 是「强」。"
-             "证据衡量的是「在 ChEMBL 里被测了多少次」，不是分子有多好——"
-             "**这就是证据不进排序键的原因**。")
+    L.append("> 两处值得注意，都是「不要用支撑量当质量」的例证：")
+    L.append("> 三个 phase 2 药的证据等级是「弱」，参比化合物 Ro-28-1675 是「强」；"
+             "效力最强的 MK-0941、AZD-1656 反而没有效能佐证。"
+             "证据与效能佐证衡量的都是**在 ChEMBL 里被测了多少次、测了几个轴**，"
+             "不是分子有多好——**这就是它们既不进排序键、也不进分档的原因**。")
     L.append("")
 
     # --- 榜单 ---
-    L.append("## 六、A 层完整名单")
+    top_band = POTENCY_BANDS[0][2]
+    L.append(f"## 六、效力 {top_band} 完整名单")
     L.append("")
-    L.append("按 `pactivity_median` 降序。效能与证据并列展示，不参与排序。")
+    L.append("按 `pactivity_median` 降序。效能与证据并列展示，不参与排序也不参与分档。")
     L.append("")
     L.append("| # | molecule | 名称 | pAct 中位/最优 | EC50 最小(nM) | 效能 fold/% | "
-             "证据 | 骨架簇 | 代表 | 打标 |")
-    L.append("| ---: | --- | --- | --- | ---: | --- | --- | ---: | :---: | --- |")
-    for r in [x for x in ranked if x["tier"] == "A"]:
+             "效能佐证 | 证据 | 骨架簇 | 代表 | 打标 |")
+    L.append("| ---: | --- | --- | --- | ---: | --- | :---: | --- | ---: | :---: | --- |")
+    for r in [x for x in ranked if x["potency_band"] == top_band]:
         ef = "/".join([r["efficacy_fold_max"] or "—", r["efficacy_pct_max"] or "—"])
-        L.append(f"| {r['rank_in_tier']} | `{r['molecule_chembl_id']}` | "
+        L.append(f"| {r['rank_in_band']} | `{r['molecule_chembl_id']}` | "
                  f"{(r['molecule_pref_name'] or '—')[:20]} | "
                  f"{r['pactivity_median']} / {r['pactivity_max']} | "
-                 f"{r['potency_nm_min'] or '—'} | {ef} | {r['evidence_level']} | "
-                 f"{r['scaffold_cluster_size']} | "
+                 f"{r['potency_nm_min'] or '—'} | {ef} | "
+                 f"{'✓' if r['has_efficacy_corroboration'] == 'TRUE' else '—'} | "
+                 f"{r['evidence_level']} | {r['scaffold_cluster_size']} | "
                  f"{'✓' if r['is_scaffold_representative'] == 'TRUE' else ''} | "
                  f"{r['flags'] or ''} |")
     L.append("")
-    L.append("## 七、B 层前 30")
+
+    L.append("## 七、效力 ≥ 7.0 的骨架代表")
     L.append("")
-    L.append("| # | molecule | pAct 中位 | EC50 最小(nM) | 效能 fold/% | 证据 | 骨架簇 | 代表 |")
-    L.append("| ---: | --- | ---: | ---: | --- | --- | ---: | :---: |")
-    for r in [x for x in ranked if x["tier"] == "B"][:30]:
-        ef = "/".join([r["efficacy_fold_max"] or "—", r["efficacy_pct_max"] or "—"])
-        L.append(f"| {r['rank_in_tier']} | `{r['molecule_chembl_id']}` | "
-                 f"{r['pactivity_median']} | {r['potency_nm_min'] or '—'} | {ef} | "
-                 f"{r['evidence_level']} | {r['scaffold_cluster_size']} | "
-                 f"{'✓' if r['is_scaffold_representative'] == 'TRUE' else ''} |")
+    reps70 = [x for x in ranked if x["_pa_med"] >= 7.0
+              and x["is_scaffold_representative"] == "TRUE"]
+    n70 = sum(1 for x in ranked if x["_pa_med"] >= 7.0)
+    L.append(f"**真正把候选收窄的是骨架，不是分档。** 效力 ≥ 7.0 有 {n70:,} 个分子，"
+             f"但只归属 **{len({x['murcko_scaffold'] for x in ranked if x['_pa_med'] >= 7.0 and x['murcko_scaffold']}):,}** "
+             f"个骨架；下表是其中 {len(reps70):,} 个簇代表——"
+             "直接按效力取 top-N 会拿到同一篇 SAR 论文的一串同系物。")
     L.append("")
-    L.append("完整名单（含 C 层、被排除的分子及其理由）见同目录 "
+    L.append("| 总名次 | molecule | 名称 | pAct 中位 | EC50 最小(nM) | 效能佐证 | "
+             "证据 | 簇大小 |")
+    L.append("| ---: | --- | --- | ---: | ---: | :---: | --- | ---: |")
+    for r in reps70:
+        L.append(f"| {r['rank_overall']} | `{r['molecule_chembl_id']}` | "
+                 f"{(r['molecule_pref_name'] or '—')[:20]} | "
+                 f"{r['pactivity_median']} | {r['potency_nm_min'] or '—'} | "
+                 f"{'✓' if r['has_efficacy_corroboration'] == 'TRUE' else '—'} | "
+                 f"{r['evidence_level']} | {r['scaffold_cluster_size']} |")
+    L.append("")
+    L.append("完整名单（含全部档位、被排除的分子及其理由）见同目录 "
              "`Step1_05_GCK_Activator_Candidates.csv`。")
     L.append("")
 
@@ -700,21 +740,28 @@ def main() -> int:
     for k, n in dc.most_common():
         print(f"  {k:<24s} {n:>6,}")
 
-    assign_tiers(rows)
+    assign_bands(rows)
     assign_scaffolds(rows)
 
     inc = [r for r in rows if r["included"] == "TRUE"]
     print(f"\n入选 {len(inc):,} / {len(rows):,}")
-    tc = Counter(r["tier"] for r in inc)
-    for k in ("A", "B", "C", "无效力（只有效能/机制读数）"):
-        if tc.get(k):
-            print(f"  {k:<24s} {tc[k]:>6,}")
+    bc = Counter(r["potency_band"] for r in inc)
+    for _, _, lab in POTENCY_BANDS + [(None, None, BAND_NO_POTENCY)]:
+        if bc.get(lab):
+            g = [r for r in inc if r["potency_band"] == lab]
+            eff = sum(1 for r in g if r["has_efficacy_corroboration"] == "TRUE")
+            print(f"  {lab:<24s} {len(g):>5,}  有效能佐证 {eff:>4,}"
+                  f"（{100 * eff / len(g):.0f}%）")
     print(f"骨架 {len({r['murcko_scaffold'] for r in rows if r['murcko_scaffold']}):,} 个")
 
-    bad = [m for m in POSITIVE_CONTROLS
-           if next((x for x in rows if x["molecule_chembl_id"] == m), {}).get("tier")
-           not in ("A", "B")]
-    print(f"\n阳性对照自检：{6 - len(bad)}/6 落在 A/B 层"
+    bad = []
+    for m in POSITIVE_CONTROLS:
+        r = next((x for x in rows if x["molecule_chembl_id"] == m), None)
+        if (r is None or r["included"] != "TRUE" or r["_pa_med"] is None
+                or r["_pa_med"] < CONTROL_MIN_PACT):
+            bad.append(m)
+    print(f"\n阳性对照自检：{len(POSITIVE_CONTROLS) - len(bad)}/{len(POSITIVE_CONTROLS)}"
+          f" 落在 pActivity ≥ {CONTROL_MIN_PACT} 的档"
           + ("" if not bad else f"  ← 未通过：{bad}"))
 
     args.outdir.mkdir(parents=True, exist_ok=True)
