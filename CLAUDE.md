@@ -24,6 +24,8 @@ Step1_02  tid → assays → 汇总实验类型/物种/可信度/来源/活性�
 Step1_03  assay → 分类（激活/抑制/结合/GKRP 相互作用/细胞表型/无法判断）
 Step1_04  激活 assay → activity → 分子，分别给出效力/效能/证据（不合成总分、不排序）
 Step1_05  分子层方向判定 → 排除打标 → 效力单轴分档排序 → 骨架去冗余 → 候选表
+Step1_06  候选分子 → molecule_dictionary/compound_structures/compound_properties
+          /molecule_hierarchy/molecule_synonyms → 理化性质主表
 ```
 
 已锚定的 GCK 靶点（ChEMBL 37）：
@@ -32,6 +34,21 @@ Step1_05  分子层方向判定 → 排除打标 → 效力单轴分档排序 �
 |---|---|---|---|---|
 | `CHEMBL3820` Hexokinase-4 | 20095 | SINGLE PROTEIN | 227 | 3,222 |
 | `CHEMBL3885579` Glucokinase/GKRP | 117123 | PROTEIN-PROTEIN INTERACTION | 1 | 40 |
+
+各步骤的收敛规模（ChEMBL 37）：
+
+| 步骤 | 产物 | 规模 |
+|---|---|---|
+| Step1_02 | GCK assay 清单 | 228 |
+| Step1_03 | 其中「GCK 激活」且靶点身份无疑 | 142 |
+| Step1_04 | 激活 assay 里出现过的分子 | 1,333（**不等于激活剂**） |
+| Step1_05 | 过方向门与删失门后入选 | 1,222；进 5 个效力档 1,007 |
+| Step1_05 | 后续实验清单 `Step1_05_Followup_Candidates.csv` | 782（P1 39 / P2 83 / P3 202 / P4 458） |
+| Step1_06 | 理化性质主表 | 782 行 × 75 列，全部命中无缺失 |
+
+**下游要挑分子，直接读 `Step1_06_GKA_Physicochemical_Properties.csv`**——
+它带着 Step1_05 的 `priority` / `potency_band` / `pactivity_median` / `direction` /
+骨架列，是链路末端唯一需要读的表。
 
 ## 关键事实与陷阱
 
@@ -126,6 +143,43 @@ Step1_05  分子层方向判定 → 排除打标 → 效力单轴分档排序 �
 - **实验条件没有结构化**：`assay_parameters` 里只有 EFO 疾病本体标注。
   葡萄糖浓度、孵育时间只写在 `assay_description` 自由文本里——
   低糖/高糖条件是区分 GKA 类型的关键，需要时得自己解析描述。
+
+### 理化性质侧（Step1_06 验证）
+
+- **ChEMBL 37 的 `compound_properties` 只有 15 列**，没有 `cx_logp` / `cx_logd` /
+  `cx_most_apka` / `cx_most_bpka` / `molecular_species`。别按老版本的字段名去查。
+  有的是：`mw_freebase`、`full_mwt`、`alogp`、`hba`、`hbd`、`psa`、`rtb`、`ro3_pass`、
+  `num_ro5_violations`、`aromatic_rings`、`heavy_atoms`、`qed_weighted`、
+  `full_molformula`、`np_likeness_score`。782 个候选上**一列不缺**。
+  **`alogp` 是 logP 不是 logD**，782 个里 95 个含羧酸，生理 pH 带负电，
+  拿 alogp 当 logD 用会高估膜通透性。
+- **性质分布**（782 个候选）：PSA 中位 105.25、MW 中位 462.55、ALogP 中位 4.14、
+  QED 中位 0.47、Lipinski 0 违规 467 个。这批分子是冲**肝和胰腺**做的。
+- **别漏掉这两张表**，它们也是分子性质，且都有数据：
+  - `compound_structural_alerts` → `structural_alerts` → `structural_alert_sets`：
+    284/782 分子命中，473 条。MLSMR 268 / Dundee 200 / Glaxo 3 / BMS 2。
+    最常见 Hetero_hetero 73、长脂链 47、Michael acceptor 59。
+  - `ligand_eff`（**按 `activity_id` 关联，不是 molregno**）：726/782 分子、1,104 条
+    LE/BEI/SEI/LLE。LLE 中位 2.81。**逐 activity 计算**，同一分子在不同葡萄糖浓度下
+    EC50 不同、LLE 也跟着变，不能跨 assay 平均。
+- **`molecule_dictionary` 的注解字段在这批分子上基本是空的**：
+  `chirality` / `prodrug` / `first_in_class` / `inorganic_flag` 有 777/782 是 **`-1`
+  （未标注，不是 0）**；`oral` / `parenteral` / `topical` / `therapeutic_flag` /
+  `withdrawn_flag` 全是 0。`molecule_synonyms` 只覆盖 5 个分子。
+  这是正常的——绝大多数是文献化合物，没进过开发流程。
+- **回溯原文用 `compound_records.compound_key`**（论文/专利里的化合物编号），
+  782 个全覆盖，比 ChEMBL ID 好对号。
+- **结构标识**：`canonical_smiles` / `standard_inchi` / `standard_inchi_key` 782 全有，
+  RDKit 全部可解析，**InChIKey 782 个全唯一**，可直接当跨库主键。两个坑：
+  - **28 组分子的 InChIKey 前 14 位相同**（骨架层一致、立体层不同），
+    按前 14 位去重会把立体异构体合并——GKA 的手性中心通常决定活性，别合。
+    全表 282 个分子带 `@` 标记。
+  - 782 个里只有 `CHEMBL1204008` 是多组分盐（SMILES 带 `.`，母体 `CHEMBL575092`）。
+    它的 `full_mwt` 含盐、`mw_freebase` 不含，取值时别混。
+- `compound_structures.molfile`（2D 坐标块）782 个都有但 Step1_06 没取——
+  结构已由 SMILES/InChI 完整表达，需要时再补。
+  `drug_mechanism` / `drug_indication` 各只覆盖 3 个分子，
+  `drug_warning` / `formulations` / `molecule_atc_classification` 为 0。
 
 ## 各步骤约定
 
