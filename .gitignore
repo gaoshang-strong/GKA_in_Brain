@@ -20,6 +20,12 @@ ChEMBL/*/chembl_*_release_notes.txt
 ChEMBL/*/chembl_*_schema.pdf
 ChEMBL/*/schema_documentation.txt
 
+# ---- SureChEMBL 2.0 全量 parquet：~17 GB，不入库 ----
+# （重新下载见 SureChEMBL/SureChEMBL_2026-07-17/README_SureChEMBL_2026-07-17.md，
+#   下载脚本 .download.sh 与服务端清单 .server_manifest.tsv 一并保留在库里）
+*.parquet
+SureChEMBL/*/LICENCE
+
 # ---- Python ----
 __pycache__/
 *.py[cod]

@@ -1,0 +1,10 @@
+file	content_length	last_modified	etag
+LICENCE	18657	Wed, 29 Jul 2026 16:25:24 GMT	"48e1-657c2671452e3"
+fields.parquet	1718	Fri, 17 Jul 2026 15:57:53 GMT	"6b6-656d09e89583a"
+biomedical_types.parquet	3179	Fri, 17 Jul 2026 15:57:28 GMT	"c6b-656d09d101278"
+biomedical_entities.parquet	33201669	Fri, 17 Jul 2026 15:57:18 GMT	"1fa9e05-656d09c7d4d24"
+fpsim2_fingerprints.h5	1352894071	Fri, 17 Jul 2026 16:03:42 GMT	"50a38677-656d0b353abaf"
+biomedical_locations.parquet	1714784809	Sat, 18 Jul 2026 07:24:33 GMT	"66358a29-656dd90940a59"
+compounds.parquet	4199702118	Fri, 17 Jul 2026 16:42:58 GMT	"fa525e66-656d13fc9ebcf"
+patent_compound_map.parquet	4976853813	Fri, 17 Jul 2026 20:37:32 GMT	"128a4c335-656d486ae14f8"
+patents.parquet	5913041063	Fri, 17 Jul 2026 20:52:19 GMT	"16071d8a7-656d4bb89360a"
