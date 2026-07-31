@@ -2,7 +2,7 @@
 
 - ChEMBL 版本：**CHEMBL_37（2026-05-01）**
 - 数据库文件：`/ShangGaoAIProjects/GKA_in_Brain/ChEMBL/ChEMBL_37/chembl_37/chembl_37_sqlite/chembl_37.db`
-- 运行时间：2026-07-31 10:12:48
+- 运行时间：2026-07-31 12:53:19
 - 输入：`Step1_03_Assay_Classification_final.csv`（Step1_03 终表）
 - 筛选：`final_category == "GCK 激活"` 且 `target_identity_suspect == "FALSE"`
 - 命中激活 assay：**142** 个（另有 0 个因靶点身份存疑被排除）
@@ -23,34 +23,34 @@
 
 ### 各 standard_type 的去向
 
-| standard_type | units | 角色 | 尺度 | activity 数 |
-| --- | --- | --- | --- | ---: |
-| `EC50` | nM | potency | concentration | 1,343 |
-| `FC` | — | efficacy | fold | 329 |
-| `Ratio` | — | efficacy | fold | 305 |
-| `Ratio` | — | unclassified | — | 144 |
-| `Emax` | % | efficacy | percent | 128 |
-| `%max` | % | efficacy | percent | 109 |
-| `Activity` | uM | unclassified | — | 65 |
-| `Activity` | — | unclassified | — | 64 |
-| `Emax` | — | efficacy | fold | 58 |
-| `S0.5` | mM | kinetic | — | 50 |
-| `Activity` | mM | unclassified | — | 42 |
-| `Activity` | nM | potency | concentration | 31 |
-| `Activity` | uM | potency | concentration | 30 |
-| `Emax` | % | efficacy | fold | 28 |
-| `Vmax` | % | kinetic | — | 25 |
-| `max activation` | — | efficacy | fold | 22 |
-| `Activity` | % | unclassified | — | 18 |
-| `EC50` | — | unclassified | — | 18 |
-| `S50` | mM | kinetic | — | 18 |
-| `Ratio EC50` | — | unclassified | — | 10 |
-| `Emax` | — | efficacy | percent | 10 |
-| `Emax` | — | unclassified | — | 6 |
-| `Vmax` | — | kinetic | — | 3 |
-| `Km` | nM | kinetic | — | 2 |
-| `Kcat` | % | kinetic | — | 2 |
-| `Activity` | mM | potency | concentration | 1 |
+| standard_type | units | 角色 | 尺度 | activity 数 | 这个指标测的是什么 |
+| --- | --- | --- | --- | ---: | --- |
+| `EC50` | nM | potency | concentration | 1,343 | 半最大效应浓度：激活幅度达到该化合物自身最大值一半时所需的浓度。**越小效力越强** |
+| `FC` | — | efficacy | fold | 329 | fold change：处理组酶活 ÷ 未处理对照，**基线 1**，>1 为激活 |
+| `Ratio` | — | efficacy | fold | 305 | 比值，**分母不统一**：多数是未处理对照（基线 1），少数是参比激活剂如 Ro-28-1675（基线 0）；本数据里还混有 Km ratio、Vmax ratio。必须逐 assay 从描述读基线 |
+| `Ratio` | — | unclassified | — | 144 | 比值，**分母不统一**：多数是未处理对照（基线 1），少数是参比激活剂如 Ro-28-1675（基线 0）；本数据里还混有 Km ratio、Vmax ratio。必须逐 assay 从描述读基线 |
+| `Emax` | % | efficacy | percent | 128 | 最大效应：化合物浓度饱和后能达到的激活上限（回答「能激活到多强」，与 EC50 的「多低浓度就起效」是两回事）。本数据里有的以倍数记、有的以 % 记 |
+| `%max` | % | efficacy | percent | 109 | 达到最大激活的百分数；**基线随 assay 而异**（0 或 100），不能设全局阈值 |
+| `Activity` | uM | unclassified | — | 65 | ChEMBL 的自由文本指标，**本身没有固定含义**——本数据里既有浓度（nM/uM/mM）也有百分比和无量纲值。只在描述明写 half-maximal activation / 50% increase 时才提升为效力 |
+| `Activity` | — | unclassified | — | 64 | ChEMBL 的自由文本指标，**本身没有固定含义**——本数据里既有浓度（nM/uM/mM）也有百分比和无量纲值。只在描述明写 half-maximal activation / 50% increase 时才提升为效力 |
+| `Emax` | — | efficacy | fold | 58 | 最大效应：化合物浓度饱和后能达到的激活上限（回答「能激活到多强」，与 EC50 的「多低浓度就起效」是两回事）。本数据里有的以倍数记、有的以 % 记 |
+| `S0.5` | mM | kinetic | — | 50 | 酶活达到 Vmax 一半时的**葡萄糖**浓度。GCK 是正协同、非米氏动力学，故不写作 Km。GKA 把它从野生型 ~7 mM 拉到 0.5–2 mM——这是**酶的性质，不是化合物效力** |
+| `Activity` | mM | unclassified | — | 42 | ChEMBL 的自由文本指标，**本身没有固定含义**——本数据里既有浓度（nM/uM/mM）也有百分比和无量纲值。只在描述明写 half-maximal activation / 50% increase 时才提升为效力 |
+| `Activity` | nM | potency | concentration | 31 | ChEMBL 的自由文本指标，**本身没有固定含义**——本数据里既有浓度（nM/uM/mM）也有百分比和无量纲值。只在描述明写 half-maximal activation / 50% increase 时才提升为效力 |
+| `Activity` | uM | potency | concentration | 30 | ChEMBL 的自由文本指标，**本身没有固定含义**——本数据里既有浓度（nM/uM/mM）也有百分比和无量纲值。只在描述明写 half-maximal activation / 50% increase 时才提升为效力 |
+| `Emax` | % | efficacy | fold | 28 | 最大效应：化合物浓度饱和后能达到的激活上限（回答「能激活到多强」，与 EC50 的「多低浓度就起效」是两回事）。本数据里有的以倍数记、有的以 % 记 |
+| `Vmax` | % | kinetic | — | 25 | 最大反应速度：底物饱和时的催化上限。多数 GKA 只降 S0.5 不改 Vmax（K 型），改 Vmax 的是 V 型。**酶的性质** |
+| `max activation` | — | efficacy | fold | 22 | 最大激活幅度，`Emax` 的自由写法 |
+| `Activity` | % | unclassified | — | 18 | ChEMBL 的自由文本指标，**本身没有固定含义**——本数据里既有浓度（nM/uM/mM）也有百分比和无量纲值。只在描述明写 half-maximal activation / 50% increase 时才提升为效力 |
+| `EC50` | — | unclassified | — | 18 | 半最大效应浓度：激活幅度达到该化合物自身最大值一半时所需的浓度。**越小效力越强** |
+| `S50` | mM | kinetic | — | 18 | 同 `S0.5`，另一种写法。**酶的性质，不是化合物效力** |
+| `Ratio EC50` | — | unclassified | — | 10 | 两个条件下 EC50 的比值（如 ±4% 人血清白蛋白），衡量条件造成的效力位移，**不是绝对效力** |
+| `Emax` | — | efficacy | percent | 10 | 最大效应：化合物浓度饱和后能达到的激活上限（回答「能激活到多强」，与 EC50 的「多低浓度就起效」是两回事）。本数据里有的以倍数记、有的以 % 记 |
+| `Emax` | — | unclassified | — | 6 | 最大效应：化合物浓度饱和后能达到的激活上限（回答「能激活到多强」，与 EC50 的「多低浓度就起效」是两回事）。本数据里有的以倍数记、有的以 % 记 |
+| `Vmax` | — | kinetic | — | 3 | 最大反应速度：底物饱和时的催化上限。多数 GKA 只降 S0.5 不改 Vmax（K 型），改 Vmax 的是 V 型。**酶的性质** |
+| `Km` | nM | kinetic | — | 2 | 米氏常数：酶对底物（此处葡萄糖）的半饱和浓度，GKA 使其下降。**酶的性质** |
+| `Kcat` | % | kinetic | — | 2 | 转换数：单个酶分子单位时间催化的底物分子数，催化效率上限。**酶的性质** |
+| `Activity` | mM | potency | concentration | 1 | ChEMBL 的自由文本指标，**本身没有固定含义**——本数据里既有浓度（nM/uM/mM）也有百分比和无量纲值。只在描述明写 half-maximal activation / 50% increase 时才提升为效力 |
 
 要点：
 

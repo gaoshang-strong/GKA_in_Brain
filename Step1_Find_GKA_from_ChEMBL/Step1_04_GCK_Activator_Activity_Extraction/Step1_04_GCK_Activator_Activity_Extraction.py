@@ -99,6 +99,36 @@ KINETIC = {"S0.5", "S50", "Km", "Vmax", "Kcat", "kcat", "Ki"}
 # 自由文本型：默认不汇总，只在描述命中显式模式时受限提升
 FREE_TEXT = {"Activity", "Ratio", "Ratio EC50", "Percent Effect", "Z score"}
 
+# 各 standard_type 的物理含义，只用于报告表的说明列，不参与任何计算。
+# 写在这里而不是报告里，是为了重跑报告时说明不丢失。
+STANDARD_TYPE_MEANING = {
+    "EC50": "半最大效应浓度：激活幅度达到该化合物自身最大值一半时所需的浓度。**越小效力越强**",
+    "AC50": "半最大激活浓度，与 `EC50` 同义的另一种写法。**越小效力越强**",
+    "Activity": "ChEMBL 的自由文本指标，**本身没有固定含义**——本数据里既有浓度（nM/uM/mM）"
+                "也有百分比和无量纲值。只在描述明写 half-maximal activation / 50% increase 时才提升为效力",
+    "FC": "fold change：处理组酶活 ÷ 未处理对照，**基线 1**，>1 为激活",
+    "Ratio": "比值，**分母不统一**：多数是未处理对照（基线 1），"
+             "少数是参比激活剂如 Ro-28-1675（基线 0）；本数据里还混有 Km ratio、Vmax ratio。"
+             "必须逐 assay 从描述读基线",
+    "Ratio EC50": "两个条件下 EC50 的比值（如 ±4% 人血清白蛋白），衡量条件造成的效力位移，"
+                  "**不是绝对效力**",
+    "Emax": "最大效应：化合物浓度饱和后能达到的激活上限（回答「能激活到多强」，"
+            "与 EC50 的「多低浓度就起效」是两回事）。本数据里有的以倍数记、有的以 % 记",
+    "%max": "达到最大激活的百分数；**基线随 assay 而异**（0 或 100），不能设全局阈值",
+    "max activation": "最大激活幅度，`Emax` 的自由写法",
+    "S0.5": "酶活达到 Vmax 一半时的**葡萄糖**浓度。GCK 是正协同、非米氏动力学，故不写作 Km。"
+            "GKA 把它从野生型 ~7 mM 拉到 0.5–2 mM——这是**酶的性质，不是化合物效力**",
+    "S50": "同 `S0.5`，另一种写法。**酶的性质，不是化合物效力**",
+    "Km": "米氏常数：酶对底物（此处葡萄糖）的半饱和浓度，GKA 使其下降。**酶的性质**",
+    "Vmax": "最大反应速度：底物饱和时的催化上限。多数 GKA 只降 S0.5 不改 Vmax（K 型），"
+            "改 Vmax 的是 V 型。**酶的性质**",
+    "Kcat": "转换数：单个酶分子单位时间催化的底物分子数，催化效率上限。**酶的性质**",
+    "kcat": "同 `Kcat`（大小写变体）。**酶的性质**",
+    "Ki": "抑制常数，抑制剂与酶的解离常数。**方向与激活相反**",
+    "Percent Effect": "自由文本的百分比效应，基线与满标随实验而异，不可跨实验汇总",
+    "Z score": "筛选的统计量（偏离对照几个标准差），是**筛选质量指标**不是活性强度",
+}
+
 CONC_UNITS = {"nM", "uM", "mM", "M", "pM", "ug ml-1", "ng ml-1"}
 # 换算到 nM
 TO_NM = {"pM": 1e-3, "nM": 1.0, "uM": 1e3, "mM": 1e6, "M": 1e9}
@@ -514,12 +544,13 @@ def write_report(mols: list, acts: list, assays: list, dropped: int,
     L.append("")
     L.append("### 各 standard_type 的去向")
     L.append("")
-    L.append("| standard_type | units | 角色 | 尺度 | activity 数 |")
-    L.append("| --- | --- | --- | --- | ---: |")
+    L.append("| standard_type | units | 角色 | 尺度 | activity 数 | 这个指标测的是什么 |")
+    L.append("| --- | --- | --- | --- | ---: | --- |")
     combo = Counter((r["standard_type"], r["standard_units"] or "—",
                      r["metric_role"], r["metric_scale"] or "—") for r in acts)
     for (st, su, role, scale), n in combo.most_common():
-        L.append(f"| `{st}` | {su} | {role} | {scale} | {n:,} |")
+        meaning = STANDARD_TYPE_MEANING.get(st, "—")
+        L.append(f"| `{st}` | {su} | {role} | {scale} | {n:,} | {meaning} |")
     L.append("")
     L.append("要点：")
     L.append("")
