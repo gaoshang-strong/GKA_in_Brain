@@ -233,12 +233,17 @@ def main() -> int:
         cols = list(reader.fieldnames or [])
         rows = list(reader)
 
-    targets = rows if args.all else [r for r in rows if r.get("review_required") == "TRUE"]
+    # 靶点身份存疑的记录不交给 LLM：它们的问题是「测的不是这个蛋白」，
+    # 让 LLM 去判方向没有意义，也会污染结果。详见 Step1_03_Target_Mismapping_MAP4K2.md
+    n_mis = sum(1 for r in rows if r.get("target_identity_suspect") == "TRUE")
+    pool = [r for r in rows if r.get("target_identity_suspect") != "TRUE"]
+    targets = pool if args.all else [r for r in pool if r.get("review_required") == "TRUE"]
     if args.limit:
         targets = targets[:args.limit]
 
     print(f"输入：{args.in_csv}")
-    print(f"总记录 {len(rows)}，本次交给 LLM 的 {len(targets)} 条"
+    print(f"总记录 {len(rows)}，其中靶点身份存疑 {n_mis} 条已排除")
+    print(f"本次交给 LLM 的 {len(targets)} 条"
           f"（{'全部' if args.all else 'review_required=TRUE'}）")
     print(f"模型：{MODEL}\n")
 

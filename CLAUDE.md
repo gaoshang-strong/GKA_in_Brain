@@ -38,6 +38,15 @@ Step1_03  assay → 分类（激活/抑制/结合/GKRP 相互作用/细胞表型
 - **必须按 UniProt accession 锚定，不能按名字。** GCK 在 ChEMBL 里的 `pref_name` 是
   **Hexokinase-4**；搜 "Glucokinase" 会漏掉主靶点，且会搜到 `CHEMBL1075152`——
   那是 GKRP（基因 GCKR），不是 GCK。
+- **⚠ 挂在靶点下的 assay 未必真在测该靶点。** ChEMBL 37 把 **52 个 MAP4K2 /
+  Germinal Center Kinase 的 assay 误挂在了 `CHEMBL3820` 下**——"GCK" 是歧义缩写
+  （glucokinase 465 aa / MAP4K2 820 aa，后者是蛋白激酶）。
+  判别规则：**描述只用缩写 "GCK" 而不写 "glucokinase" 的，全部是 MAP4K2**。
+  下游筛 GKA 必须加 `target_identity_suspect == FALSE`。
+  完整证据见 `Step1_Find_GKA_from_ChEMBL/Step1_03_GCK_Assay_Classification/
+  Step1_03_Target_Mismapping_MAP4K2.md`。
+  **靶点身份校验要作为独立一步**，方向分类（激活/抑制）回答不了这个问题。
+  序列是最可靠的裁判：`component_sequences.sequence` 里可直接比对描述中的肽段与残基范围。
 - **PPI 靶点不能与主靶点无脑合并**：`CHEMBL3885579` 测的是 GCK–GKRP 相互作用
   （GKRP 解离剂机制），与直接激活 GCK 是两类机制。
 - **`assay_type` 没有区分力**：226/228 都是 `B`(Binding)，包括描述明写

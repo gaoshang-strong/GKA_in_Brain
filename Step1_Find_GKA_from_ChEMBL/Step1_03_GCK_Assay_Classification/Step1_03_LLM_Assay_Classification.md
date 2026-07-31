@@ -1,15 +1,15 @@
 # Step1_03 LLM 分类结果（第 2 阶段）
 
 - 模型：`deepseek-v4-pro`
-- 运行时间：2026-07-30 22:14:47
-- 交给 LLM 的记录：**30** / 228
-- API 调用 23 次（缓存命中 7 次），token 输入 18,422 / 输出 18,921
+- 运行时间：2026-07-30 22:37:56
+- 交给 LLM 的记录：**19** / 228
+- API 调用 0 次（缓存命中 19 次），token 输入 11,927 / 输出 10,607
 
 > LLM 只处理规则阶段判不明确的记录，不覆盖规则的 high 置信度结论。每条结论都要求给出**逐字引自原描述**的证据句；脚本会校验该证据是否真实存在，核验不通过的一律不采纳标签并转人工。
 
 ## 证据校验
 
-- 通过：**30**
+- 通过：**19**
 - 未通过（证据句无法在原文中找到，标签不予采纳）：**0**
 
 ## 最终分类分布
@@ -17,8 +17,8 @@
 | 类别 | assay 数 | 其中仍需人工审核 |
 | --- | ---: | ---: |
 | GCK 激活 | 142 | 4 |
-| GCK 抑制 | 51 | 6 |
-| GCK 结合 | 21 | 3 |
+| GCK 抑制 | 54 | 50 |
+| GCK 结合 | 18 | 0 |
 | 无法判断 | 10 | 10 |
 | GCK–GKRP 相互作用 | 3 | 0 |
 | 细胞或表型效应 | 1 | 1 |
@@ -27,9 +27,9 @@
 
 | final_method | 数量 | 含义 |
 | --- | ---: | --- |
-| rule | 198 | 规则明确判定，未经 LLM |
-| manual_review_required | 15 | 规则与 LLM 都未能确定，需人工审核 |
-| llm | 15 | 规则不明确，采纳了 LLM 的判定（证据已核验） |
+| rule | 209 | 规则明确判定，未经 LLM |
+| manual_review_required | 10 | 规则与 LLM 都未能确定，需人工审核 |
+| llm | 9 | 规则不明确，采纳了 LLM 的判定（证据已核验） |
 
 ## LLM 逐条结果
 
@@ -50,29 +50,19 @@
 | `CHEMBL3751340` | GCK 激活 | GCK 激活 | high | TRUE | Effect on human glucokinase activity after 60 mins by luciferase-based luminescence assay  | 实验明确测量对 GCK 酶活性的影响，standard_type 仅含 EC50，表明化合物增强酶活，且条件不含 GKRP，排除相互作用检测。 |
 | `CHEMBL3888434` | GCK 激活 | GCK 激活 | medium | TRUE | Enzymatic activity is calculated from the initial reaction velocity, measured from the cha | 该实验测定重组人GCK的酶活性，标准化类型为EC50，表明测量的是化合物增强酶活性的能力，因此归类为GCK激活。 |
 | `CHEMBL4022295` | GCK 激活 | 无法判断 | low | TRUE | Potency index, ratio of (S)-N-(5-chlorothiazol-2-yl)-2-(4-(cyclopropylsulfonyl)-6-methyl-2 | 描述仅提及EC50比值，未说明功能方向（激活或抑制），且assay_type标注为Binding但与EC50不符，信息不足以归类至具体测量类别。 |
-| `CHEMBL4880638` | GCK 抑制 | GCK 抑制 | medium | TRUE | GCK (h) Millipore kinase activity assay | 实验描述为激酶活性测定，结合实测标准类型为抑制，表明实际测量的是化合物对GCK活性的抑制能力。描述本身未提及方向，故置信度为中。 |
-| `CHEMBL4881060` | 无法判断 | 无法判断 | low | TRUE | GCK(h) Eurofins Kinase panel | 实验描述仅提及激酶panel，未指明是激活、抑制或结合；实测指标为残留激酶活性百分比，但无方向性说明，无法确定具体测定类别。 |
-| `CHEMBL4884319` | 无法判断 | 无法判断 | medium | TRUE | GCK(h) Eurofins kinase panel | 描述仅提及激酶panel，standard_type为残余活性但未标明是激活还是抑制筛选，activity_comment也未提供方向信息，无法确定究竟测量激活或抑制。 |
-| `CHEMBL4884756` | GCK 抑制 | GCK 结合 | medium | TRUE | GCK(M4K2LGY1) Takeda global kinase panel | 实验类型为 Binding，且 standard_type 为 IC50，通常表示竞争结合测定，因此判断为 GCK 结合。 |
-| `CHEMBL4885047` | GCK 抑制 | GCK 结合 | medium | TRUE | GCK(M4K2LGY1) Takeda global kinase panel | 实验类型为 Binding，且 standard_type 为 IC50，通常表示竞争结合测定，因此判断为 GCK 结合。 |
-| `CHEMBL4885337` | GCK 抑制 | GCK 结合 | medium | TRUE | GCK(M4K2LGY1) Takeda global kinase panel | 实验类型为 Binding，且 standard_type 为 IC50，通常表示竞争结合测定，因此判断为 GCK 结合。 |
-| `CHEMBL4887878` | GCK 抑制 | GCK 抑制 | medium | TRUE | GCK(h) Millipore kinase panel | 实验描述为激酶筛选面板，实测standard_type为Inhibition，表明测量化合物对GCK酶活性的抑制能力。 |
 | `CHEMBL5048925` | GCK 结合 | GCK 结合 | high | TRUE | Displacement of fluorescent labeled derivative from recombinant human hepatic glucokinase | 描述为基于荧光偏振的竞争结合实验，直接测量化合物从重组GK蛋白上置换荧光标记探针的能力，属于GCK结合测定。 |
-| `CHEMBL5059136` | GCK 抑制 | GCK 抑制 | medium | TRUE | GCK(h) Kinase panel | 实验描述为激酶面板筛选，暗示酶活性检测；实测standard_type仅Inhibition，指向化合物对GCK活性的抑制。assay_type标记为Binding存疑，但整体信息 |
 | `CHEMBL5261324` | GCK 激活 | 细胞或表型效应 | medium | TRUE | by luciferase reporter gene assay | 该实验使用荧光素酶报告基因检测，读数反映的是细胞水平的响应，而非直接测量GCK酶活性，因此属于细胞或表型效应。 |
-| `CHEMBL5464286` | 无法判断 | 无法判断 | low | TRUE | % Activity remaining of GCK in the Dundee kinase panel at 1.0 µM | 实验描述仅提供剩余活性百分比，未指明化合物是增强还是降低酶活性，因此无法判断是激活或抑制。 |
-| `CHEMBL5724151` | 无法判断 | 无法判断 | low | TRUE | activity of GCK(h) at 1.0 µM in the Eurofins Kinase panel | 描述仅提及“activity”，未指明是激活还是抑制，也无法判断是功能检测还是结合实验，信息不足。 |
 | `CHEMBL5733424` | GCK 抑制 | 无法判断 | high | TRUE | Inhibition Assay: The in vitro activity of the compounds described herein in inhibiting TA | 实验描述明确测量的是TAK1、HCK等激酶的抑制活性，未提及葡萄糖激酶（GCK），无法判断该实验是否实际测量了GCK的抑制或其他效应。 |
 | `CHEMBL5735123` | GCK 抑制 | GCK 抑制 | medium | TRUE | the in vitro activity of the compounds described herein in inhibiting TAK1, HCK and other  | 实验描述明确提及测定化合物对TAK1、HCK及其他激酶的抑制活性，结合靶点为GCK，推断为GCK抑制实验。但未直接提及GCK，故置信度中等。 |
-| `CHEMBL6194772` | 无法判断 | 无法判断 | low | TRUE | Effect of GCK(h) at compound concentration of 1.0 uM using the Cerep Kinase panel | 描述仅提及“Effect”，未指明方向（激活或抑制），且standard_type为“Effect”，缺乏足够信息判断实际测量的类别。 |
 
 ## 仍需人工审核
 
-共 **24** 条。按 README 第 4 步，这些不允许由 LLM 强行分类。
+共 **65** 条。按 README 第 4 步，这些不允许由 LLM 强行分类。
 
 | assay | 暂定类别 | 描述 |
 | --- | --- | --- |
 | `CHEMBL1054393` | 无法判断 | Activity at human recombinant liver glucokinase expressed in Escherichia coli BL21 (DE3) |
+| `CHEMBL1942767` | GCK 抑制 | Inhibition of human GCK in HL-60 cells lysate assessed as reduction of labeling of acyl-phosphate ATP probe at |
 | `CHEMBL2168357` | 无法判断 | Activity at human recombinant glucokinase assessed as decrease in Km at 1 uM |
 | `CHEMBL2432300` | 无法判断 | Activity of human glucokinase at 50 uM |
 | `CHEMBL3226993` | GCK 激活 | Activity at glucokinase (unknown origin) |
@@ -80,18 +70,58 @@
 | `CHEMBL3239305` | 无法判断 | Activity of recombinant human pancreatic glucokinase assessed as glucose half-maximal activity |
 | `CHEMBL3377919` | 无法判断 | Activity of human recombinant Glucokinase measured over 5 mins by spectrophotometry |
 | `CHEMBL3369166` | GCK 抑制 | Ratio of EC50 for GK translocation from nucleus to cytoplasm of mouse hepatocytes to IC50 for inhibition of fl |
+| `CHEMBL3630507` | GCK 抑制 | Inhibition of GCK (unknown origin) at 10 uM after 120 mins P33 radiolabeled kinase activity assay |
+| `CHEMBL3750455` | GCK 抑制 | Inhibition of GCK (unknown origin) at 1 uM |
+| `CHEMBL3829755` | GCK 抑制 | Inhibition of human GCK (2 to 812 residues) assessed as remaining enzyme activity at 50 uM after 30 mins by 33 |
 | `CHEMBL3888434` | GCK 激活 | Coupled Enzymatic Assay: The assay is carried out according to the protocol outlined in Hariharan et al (1997) |
 | `CHEMBL4022295` | GCK 激活 | Potency index, ratio of (S)-N-(5-chlorothiazol-2-yl)-2-(4-(cyclopropylsulfonyl)-6-methyl-2-oxopyridin-1(2H)-yl |
+| `CHEMBL4034328` | GCK 抑制 | Inhibition of GCK Lysine 1 labelling site (unknown origin) at 10 uM |
+| `CHEMBL4034329` | GCK 抑制 | Inhibition of GCK Lysine 2 labelling site (unknown origin) at 10 uM |
+| `CHEMBL4045684` | GCK 抑制 | Inhibition of GCK conserved Lys1 (DTVTSELAAVKIVK) in human PBMC at 1 uM |
+| `CHEMBL4045685` | GCK 抑制 | Inhibition of GCK conserved Lys2 (DIKGANLLLTLQGDVK) in human PBMC at 1 uM |
+| `CHEMBL4045926` | GCK 抑制 | Inhibition of GCK conserved Lys1 (DTVTSELAAVKIVK) in human PBMC at 0.1 uM |
+| `CHEMBL4045927` | GCK 抑制 | Inhibition of GCK conserved Lys2 (DIKGANLLLTLQGDVK) in human PBMC at 0.1 uM |
+| `CHEMBL4050296` | GCK 抑制 | Inhibition of human GCK assessed as residual activity at 1 uM in presence of 33P-ATP by filter-binding assay r |
+| `CHEMBL4057298` | GCK 抑制 | Inhibition of GCK (unknown origin) at 0.45 uM relative to control |
+| `CHEMBL4057494` | GCK 抑制 | Inhibition of GCK (unknown origin) at 0.49 uM relative to control |
+| `CHEMBL4118352` | GCK 抑制 | Inhibition of GCK in human SKCO1 cells at 1 uM after 4 hrs using biotin labeled DIKGANLLLTLQGDVK probe by mass |
+| `CHEMBL4120341` | GCK 抑制 | Inhibition of GCK (unknown origin) at 0.45 uM relative to control |
+| `CHEMBL4120568` | GCK 抑制 | Inhibition of GCK (unknown origin) at 0.19 uM relative to control |
+| `CHEMBL4120792` | GCK 抑制 | Inhibition of GCK (unknown origin) at 0.164 uM relative to control |
+| `CHEMBL4327702` | GCK 抑制 | Inhibition of human GCK assessed as residual activity at 1 uM using MBP as substrate by [gamma-33P]-ATP assay  |
+| `CHEMBL4328066` | GCK 抑制 | Inhibition of human GCK assessed as residual activity at 100 uM using MBP as substrate by [gamma-33P]-ATP assa |
+| `CHEMBL4328430` | GCK 抑制 | Inhibition of human GCK using MBP as substrate by [gamma-33P]-ATP assay |
+| `CHEMBL4352383` | GCK 抑制 | Inhibition of human GCK at 10 uM using MBP as substrate in presence of [gamma-33P]-ATP |
+| `CHEMBL4379338` | GCK 抑制 | Inhibition of recombinant human GCK (1 to 473 residues) using myelin basic protein as substrate after 40 mins  |
+| `CHEMBL4674071` | GCK 抑制 | Inhibition of human GCK using MBP as substrate by [gamma-33P]-ATP assay |
+| `CHEMBL4674112` | GCK 抑制 | Inhibition of human GCK using MBP as substrate at 0.5 uM by [gamma-33P]-ATP assay relative to control |
+| `CHEMBL4674372` | GCK 抑制 | Inhibition of human GCK using MBP as substrate assessed as residual activity at 1 uM by [gamma-33P]-ATP assay  |
+| `CHEMBL4681971` | GCK 抑制 | Inhibition of GCK human PBMC lysates at 1 uM by ActivX screen assay relative to control |
+| `CHEMBL4720720` | GCK 抑制 | Inhibition of human GCK using MBP as substrate by [gamma-33P]-ATP assay |
+| `CHEMBL4721072` | GCK 抑制 | Inhibition of human GCK assessed as residual activity using MBP as substrate at 1 uM by [gamma-33P]-ATP assay  |
+| `CHEMBL4804384` | GCK 抑制 | Inhibition of GCK in human NCI-H929 cells by mass spectroscopic analysis |
+| `CHEMBL4804566` | GCK 抑制 | Inhibition of GCK in human NCI-H929 cells at 10 uM by mass spectroscopic analysis relative to control |
 | `CHEMBL4880638` | GCK 抑制 | GCK (h) Millipore kinase activity assay |
 | `CHEMBL4881060` | 无法判断 | GCK(h) Eurofins Kinase panel |
 | `CHEMBL4884319` | 无法判断 | GCK(h) Eurofins kinase panel |
-| `CHEMBL4884756` | GCK 结合 | GCK(M4K2LGY1) Takeda global kinase panel |
-| `CHEMBL4885047` | GCK 结合 | GCK(M4K2LGY1) Takeda global kinase panel |
-| `CHEMBL4885337` | GCK 结合 | GCK(M4K2LGY1) Takeda global kinase panel |
+| `CHEMBL4884756` | GCK 抑制 | GCK(M4K2LGY1) Takeda global kinase panel |
+| `CHEMBL4885047` | GCK 抑制 | GCK(M4K2LGY1) Takeda global kinase panel |
+| `CHEMBL4885337` | GCK 抑制 | GCK(M4K2LGY1) Takeda global kinase panel |
 | `CHEMBL4887878` | GCK 抑制 | GCK(h) Millipore kinase panel |
+| `CHEMBL5038899` | GCK 抑制 | Inhibition of human recombinant GCK assessed as reduction in substrate phosphorylation at 50 to 500 nM using A |
+| `CHEMBL5058199` | GCK 抑制 | Inhibition of GCK (unknown origin) at 1 uM |
 | `CHEMBL5059136` | GCK 抑制 | GCK(h) Kinase panel |
+| `CHEMBL5156973` | GCK 抑制 | Inhibition of human recombinant GCK (1 to 473 residues) using myelin basic protein as substrate in presence of |
 | `CHEMBL5261324` | 细胞或表型效应 | Agonist activity at glucokinase (unknown origin) assessed as fold increase at 10 uM by luciferase reporter gen |
+| `CHEMBL5464035` | GCK 抑制 | Inhibition of GCK at 10.0 µM in the Eurofins Kinase panel |
 | `CHEMBL5464286` | 无法判断 | % Activity remaining of GCK in the Dundee kinase panel at 1.0 µM |
+| `CHEMBL5464534` | GCK 抑制 | Inhibition of GCK (h) at 10.0 µM in the Eurofins Kinase panel |
+| `CHEMBL5464912` | GCK 抑制 | Inhibition of GCK (h) at 10.0 µM in the Eurofins Kinase panel |
+| `CHEMBL5657730` | GCK 抑制 | Inhibition of human GCK assessed as remaining activity at 10 uM in presence of ATP by radiometric kinase assay |
+| `CHEMBL5679451` | GCK 抑制 | Inhibition of N-terminal GST- tagged recombinant human GCK (1 to 473 residues) expressed in baculovirus infect |
+| `CHEMBL5679684` | GCK 抑制 | Inhibition of N-terminal GST- tagged recombinant human GCK (1 to 473 residues) expressed in baculovirus infect |
+| `CHEMBL5681798` | GCK 抑制 | Inhibition of N-terminal GST- tagged recombinant human GCK (1 to 473 residues) expressed in baculovirus infect |
+| `CHEMBL5682058` | GCK 抑制 | Inhibition of N-terminal GST- tagged recombinant human GCK (1 to 473 residues) expressed in baculovirus infect |
 | `CHEMBL5724151` | 无法判断 | activity of GCK(h) at 1.0 µM in the Eurofins Kinase panel |
 | `CHEMBL5733424` | GCK 抑制 | Inhibition Assay: The in vitro activity of the compounds described herein in inhibiting TAK1, HCK, and other k |
 | `CHEMBL5735123` | GCK 抑制 | In Vitro Activity Assay: The in vitro activity of the compounds described herein in inhibiting TAK1, HCK and o |

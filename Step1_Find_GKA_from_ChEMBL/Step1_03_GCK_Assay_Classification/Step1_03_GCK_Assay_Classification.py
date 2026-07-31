@@ -150,6 +150,64 @@ def st_direction(st: Counter) -> tuple[set, str]:
     return dirs, "、".join(notes)
 
 
+# ---------------------------------------------------------------------------
+# 靶点身份校验：这个 assay 测的到底是不是葡萄糖激酶？
+#
+# "GCK" 是歧义缩写：既是 Glucokinase（P35557，465 aa，己糖激酶），
+# 也是 Germinal Center Kinase（MAP4K2，Q12851，820 aa，蛋白激酶）。
+# ChEMBL 37 把 52 个 MAP4K2 的 assay 误挂在了 CHEMBL3820 下。
+# 详细调查过程见 Step1_03_Target_Mismapping_MAP4K2.md。
+# ---------------------------------------------------------------------------
+GLUCOKINASE_LEN = 465          # P35557 全长
+RE_GCK_ABBREV = re.compile(r"\bGCK\b")
+RE_GLUCOKINASE = re.compile(r"glucokinase|hexokinase", re.I)
+# MAP4K2 催化域特征肽（已用 component_sequences 逐字比对确认）
+MAP4K2_PEPTIDES = ["DIKGANLLLTLQGDVK", "DTVTSELAAVKIVK"]
+RE_RESIDUE_RANGE = re.compile(r"\(?\s*(\d+)\s*to\s*(\d+)\s*residues", re.I)
+# 蛋白激酶专属读数：葡萄糖激酶磷酸化的是葡萄糖，不是蛋白
+RE_PROTEIN_KINASE_ASSAY = re.compile(
+    r"radiolabeled kinase activity|kinase activity assay|acyl-phosphate ATP probe"
+    r"|labelling site|labeling site|conserved Lys", re.I)
+
+
+def validate_target_identity(row: dict) -> tuple:
+    """判断该 assay 是否可能并非在测葡萄糖激酶。返回 (suspect, evidence)。
+
+    主判据是缩写歧义；其余作为佐证一并记录，便于人工复核。
+    """
+    desc = row.get("assay_description") or ""
+    ev = []
+
+    uses_abbrev = bool(RE_GCK_ABBREV.search(desc))
+    names_gk = bool(RE_GLUCOKINASE.search(desc))
+
+    # 主判据：只用缩写 GCK、通篇不写 glucokinase
+    primary = uses_abbrev and not names_gk
+    if primary:
+        ev.append("描述只用缩写「GCK」而未出现 glucokinase/hexokinase，"
+                  "该缩写在激酶文献中通常指 Germinal Center Kinase (MAP4K2)")
+
+    # 佐证 1：残基范围超出葡萄糖激酶全长
+    m = RE_RESIDUE_RANGE.search(desc)
+    if m and int(m.group(2)) > GLUCOKINASE_LEN:
+        ev.append(f"描述给出残基范围 {m.group(1)}-{m.group(2)}，"
+                  f"超出葡萄糖激酶全长 {GLUCOKINASE_LEN} aa")
+
+    # 佐证 2：出现 MAP4K2 催化域特征肽
+    for pep in MAP4K2_PEPTIDES:
+        if pep in desc:
+            ev.append(f"描述含 MAP4K2 催化域特征肽 {pep}（葡萄糖激酶序列中不存在）")
+
+    # 佐证 3：蛋白激酶专属读数
+    m = RE_PROTEIN_KINASE_ASSAY.search(desc)
+    if m:
+        ev.append(f"出现蛋白激酶专属读数「{m.group(0)}」，"
+                  "而葡萄糖激酶磷酸化的是葡萄糖而非蛋白")
+
+    suspect = primary or len(ev) >= 2
+    return suspect, "；".join(ev)
+
+
 def classify(row: dict) -> dict:
     """对单个 assay 做规则分类。返回 4 个新字段 + 方法标记。
 
@@ -255,12 +313,20 @@ def classify(row: dict) -> dict:
 
     review = conf != "high" or category == UNKNOWN or conflict
 
+    # 靶点身份校验独立于方向判定：方向判对了，靶点也可能是错的
+    suspect, ident_ev = validate_target_identity(row)
+    if suspect:
+        review = True
+        reasons.append("⚠ 靶点身份存疑，该 assay 可能并非在测葡萄糖激酶")
+
     return {
         "assay_category": category,
         "classification_confidence": conf,
         "classification_reason": "；".join(reasons),
         "review_required": "TRUE" if review else "FALSE",
         "classification_method": "rule",
+        "target_identity_suspect": "TRUE" if suspect else "FALSE",
+        "target_identity_evidence": ident_ev,
     }
 
 
@@ -289,7 +355,8 @@ def main() -> int:
         r.update(classify(r))
 
     new_cols = ["assay_category", "classification_confidence", "classification_reason",
-                "review_required", "classification_method"]
+                "review_required", "classification_method",
+                "target_identity_suspect", "target_identity_evidence"]
     out_cols = base_cols + new_cols
 
     args.outdir.mkdir(parents=True, exist_ok=True)
@@ -301,7 +368,11 @@ def main() -> int:
             w.writerow({k: r.get(k, "") for k in out_cols})
 
     # 需要 LLM / 人工处理的子集，单独出一份，字段裁剪到判断所需
-    pending = [r for r in rows if r["review_required"] == "TRUE"]
+    # 靶点身份存疑的不进 LLM：它们的问题在「测的是不是这个蛋白」，
+    # 不在「测的是哪个方向」，交由 LLM 判方向没有意义
+    mismapped = [r for r in rows if r["target_identity_suspect"] == "TRUE"]
+    pending = [r for r in rows
+               if r["review_required"] == "TRUE" and r["target_identity_suspect"] != "TRUE"]
     pend_cols = ["assay_chembl_id", "target_chembl_id", "assay_description",
                  "assay_type", "bao_label", "standard_types", "activity_comments",
                  "assay_category", "classification_confidence", "classification_reason"]
@@ -312,8 +383,18 @@ def main() -> int:
         for r in pending:
             w.writerow({k: r.get(k, "") for k in pend_cols})
 
-    write_report(rows, pending, args.outdir / "Step1_03_GCK_Assay_Classification.md",
-                 args.in_csv)
+    mis_cols = ["assay_chembl_id", "assay_description", "assay_category",
+                "standard_types", "n_activities", "doc_chembl_id", "doc_title",
+                "src_short_name", "target_identity_evidence"]
+    mis_csv = args.outdir / "Step1_03_target_mismapped.csv"
+    with mis_csv.open("w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=mis_cols)
+        w.writeheader()
+        for r in mismapped:
+            w.writerow({k: r.get(k, "") for k in mis_cols})
+
+    write_report(rows, pending, mismapped,
+                 args.outdir / "Step1_03_GCK_Assay_Classification.md", args.in_csv)
 
     # 控制台摘要
     print(f"输入：{args.in_csv}")
@@ -324,13 +405,19 @@ def main() -> int:
             act = sum(int(r["n_activities"]) for r in rows if r["assay_category"] == c)
             print(f"  {c:<18s} {cat[c]:>4d} 个 assay，{act:>6,} 条活性")
     print(f"\n置信度：{dict(Counter(r['classification_confidence'] for r in rows))}")
-    print(f"需复核（review_required=TRUE）：{len(pending)} / {len(rows)}")
+    n_rev = sum(1 for r in rows if r["review_required"] == "TRUE")
+    print(f"需复核（review_required=TRUE）：{n_rev} / {len(rows)}")
+    print(f"  其中交给第 2 阶段 LLM 的：{len(pending)}（已排除靶点身份存疑项）")
+    print(f"\n⚠ 靶点身份存疑（疑为 MAP4K2 而非葡萄糖激酶）：{len(mismapped)} / {len(rows)}")
+    print(f"  剔除后可用于 GKA 的：{len(rows) - len(mismapped)}")
     print(f"\n分类结果：{out_csv}")
     print(f"待复核子集：{pend_csv}")
+    print(f"误映射子集：{mis_csv}")
     return 0
 
 
-def write_report(rows: list[dict], pending: list[dict], path: Path, src: Path) -> None:
+def write_report(rows: list, pending: list, mismapped: list,
+                 path: Path, src: Path) -> None:
     L: list[str] = []
     cat = Counter(r["assay_category"] for r in rows)
     tot_act = sum(int(r["n_activities"]) for r in rows)
@@ -346,16 +433,34 @@ def write_report(rows: list[dict], pending: list[dict], path: Path, src: Path) -
              "**不强行给标签**。每条判定都附证据原文，可逐条复核。")
     L.append("")
 
+    L.append("## ⚠ 靶点身份校验")
+    L.append("")
+    L.append(f"**{len(mismapped)} / {len(rows)}** 个 assay 的靶点身份存疑——"
+             "它们挂在葡萄糖激酶 `CHEMBL3820` 下，但实际测量的很可能是 "
+             "**MAP4K2 / Germinal Center Kinase**（「GCK」是歧义缩写）。")
+    L.append("")
+    L.append("完整调查过程与五条独立证据见 "
+             "[`Step1_03_Target_Mismapping_MAP4K2.md`](Step1_03_Target_Mismapping_MAP4K2.md)，"
+             "名单见 `Step1_03_target_mismapped.csv`。")
+    L.append("")
+    L.append("**下游筛选 GKA 时必须加上 `target_identity_suspect == FALSE`。**")
+    L.append("")
+
+    clean = [r for r in rows if r["target_identity_suspect"] != "TRUE"]
     L.append("## 分类分布")
     L.append("")
-    L.append("| 类别 | assay 数 | 活性数 | 其中需复核 |")
-    L.append("| --- | ---: | ---: | ---: |")
+    L.append("「剔除后」列已排除靶点身份存疑的记录，是实际可用于 GKA 的数量。")
+    L.append("")
+    L.append("| 类别 | assay 数 | 活性数 | 其中需复核 | 剔除误映射后 |")
+    L.append("| --- | ---: | ---: | ---: | ---: |")
     for c in CATEGORY_ORDER:
         if not cat.get(c):
             continue
         sub = [r for r in rows if r["assay_category"] == c]
+        cl = [r for r in clean if r["assay_category"] == c]
         L.append(f"| {c} | {len(sub)} | {sum(int(r['n_activities']) for r in sub):,} | "
-                 f"{sum(1 for r in sub if r['review_required'] == 'TRUE')} |")
+                 f"{sum(1 for r in sub if r['review_required'] == 'TRUE')} | "
+                 f"**{len(cl)}**（{sum(int(r['n_activities']) for r in cl):,} 条活性） |")
     L.append("")
 
     L.append("## 置信度分布")
