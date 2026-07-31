@@ -2,7 +2,7 @@
 
 - ChEMBL 版本：**CHEMBL_37（2026-05-01）**
 - 数据库文件：`/ShangGaoAIProjects/GKA_in_Brain/ChEMBL/ChEMBL_37/chembl_37/chembl_37_sqlite/chembl_37.db`
-- 运行时间：2026-07-30 21:42:09
+- 运行时间：2026-07-30 21:55:11
 - 输入 tid：20095, 117123
 - assay 总数：**228**，其上活性数据点合计 **3,262**
 
@@ -97,6 +97,18 @@
 | `% Activity remaining` | 2 |
 | `Effect` | 2 |
 | `activity` | 1 |
+
+## 突变体 / 实验参数 / 实验分类的覆盖情况
+
+| 字段 | 有值的 assay 数 | 说明 |
+| --- | ---: | --- |
+| `variant_id` | 0 / 228 | 非空表示该实验用的是突变体蛋白（如激酶耐药突变）；GCK 的天然激活突变若被单独建为 variant 会出现在这里 |
+| `assay_parameters` | 5 / 228 | 实验参数，已聚合为 JSON 列表 |
+| `assay_classifications` | 0 / 228 | 实验分类，已聚合为 JSON 列表；该表主要覆盖体内/治疗领域实验 |
+
+实际出现的参数类型：`EFO_ID`（17）、`EFO_TERM`（17）
+
+> 注意：这里的参数**不是**葡萄糖浓度、孵育时间这类实验条件，而是 EFO/MONDO 疾病本体标注。GCK 这批 assay 的实验条件（葡萄糖浓度等）只写在 `assay_description` 自由文本里，没有被结构化到 `assay_parameters`。要按葡萄糖浓度分层，必须自己解析描述文本。
 
 ## 文献年份分布
 

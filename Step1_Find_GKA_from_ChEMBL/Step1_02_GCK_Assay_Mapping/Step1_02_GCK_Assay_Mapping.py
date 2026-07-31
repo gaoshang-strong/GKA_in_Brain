@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import json
 import sqlite3
 import sys
 from collections import Counter
@@ -58,11 +59,16 @@ COLUMNS = [
     # --- 物种与实验体系 ---
     "assay_organism", "assay_tax_id", "assay_strain",
     "assay_tissue", "assay_cell_type", "assay_subcellular_fraction",
+    # --- 突变体 ---
+    "variant_id", "variant_mutation", "variant_accession", "variant_isoform",
     # --- 靶点可信度 ---
     "confidence_score", "confidence_desc", "relationship_type", "relationship_desc",
     # --- 来源与出处 ---
     "src_id", "src_short_name", "src_assay_id",
     "doc_chembl_id", "doc_year", "doc_journal", "pubmed_id", "doi", "doc_title",
+    # --- 聚合字段（JSON 列表，保持一个 assay 一行）---
+    "assay_parameters", "n_assay_parameters",
+    "assay_classifications", "n_assay_classifications",
     # --- 活性数据规模 ---
     "n_activities", "n_activities_with_pchembl", "n_distinct_compounds",
     "standard_types",
@@ -85,6 +91,10 @@ SELECT
     a.assay_tissue                  AS assay_tissue,
     a.assay_cell_type               AS assay_cell_type,
     a.assay_subcellular_fraction    AS assay_subcellular_fraction,
+    a.variant_id                    AS variant_id,
+    vs.mutation                     AS variant_mutation,
+    vs.accession                    AS variant_accession,
+    vs.isoform                      AS variant_isoform,
     a.confidence_score              AS confidence_score,
     csl.description                 AS confidence_desc,
     a.relationship_type             AS relationship_type,
@@ -110,6 +120,7 @@ LEFT JOIN confidence_score_lookup csl ON csl.confidence_score = a.confidence_sco
 LEFT JOIN relationship_type rt       ON rt.relationship_type = a.relationship_type
 LEFT JOIN source s                   ON s.src_id = a.src_id
 LEFT JOIN docs d                     ON d.doc_id = a.doc_id
+LEFT JOIN variant_sequences vs       ON vs.variant_id = a.variant_id
 WHERE a.tid IN ({placeholders})
 ORDER BY a.tid, a.assay_id
 """
@@ -132,6 +143,35 @@ FROM activities
 WHERE assay_id IN ({placeholders})
 GROUP BY assay_id, st
 """
+
+# 一个 assay 可以有多条实验参数/多个分类。为了保持「一个 assay 一行」，
+# 这两张表在 Python 侧聚合成 JSON 列表写入单元格。
+PARAM_SQL = """
+SELECT assay_id, type, relation, value, units, text_value,
+       standard_type, standard_relation, standard_value, standard_units,
+       standard_text_value, comments
+FROM assay_parameters
+WHERE assay_id IN ({placeholders})
+ORDER BY assay_id, assay_param_id
+"""
+
+CLASS_SQL = """
+SELECT acm.assay_id, ac.assay_class_id, ac.l1, ac.l2, ac.l3, ac.class_type, ac.source
+FROM assay_class_map acm
+JOIN assay_classification ac ON ac.assay_class_id = acm.assay_class_id
+WHERE acm.assay_id IN ({placeholders})
+ORDER BY acm.assay_id, ac.assay_class_id
+"""
+
+
+def _compact(row: sqlite3.Row, keys: list[str]) -> dict:
+    """丢掉值为空的键，避免 JSON 里塞满 null 影响可读性。"""
+    return {k: row[k] for k in keys if row[k] not in (None, "")}
+
+
+def _json(items: list[dict]) -> str:
+    """空列表写成空字符串，便于在 CSV / pandas 里判空。"""
+    return json.dumps(items, ensure_ascii=False) if items else ""
 
 
 def connect_readonly(db_path: Path) -> sqlite3.Connection:
@@ -169,7 +209,24 @@ def fetch(con: sqlite3.Connection, tids: list[int]) -> list[dict]:
     for r in con.execute(STD_SQL.format(placeholders=ph2), ids):
         std.setdefault(r["assay_id"], Counter())[r["st"]] = r["n"]
 
+    params: dict[int, list] = {}
+    pkeys = ["type", "relation", "value", "units", "text_value",
+             "standard_type", "standard_relation", "standard_value",
+             "standard_units", "standard_text_value", "comments"]
+    for r in con.execute(PARAM_SQL.format(placeholders=ph2), ids):
+        params.setdefault(r["assay_id"], []).append(_compact(r, pkeys))
+
+    classes: dict[int, list] = {}
+    ckeys = ["assay_class_id", "l1", "l2", "l3", "class_type", "source"]
+    for r in con.execute(CLASS_SQL.format(placeholders=ph2), ids):
+        classes.setdefault(r["assay_id"], []).append(_compact(r, ckeys))
+
     for row in rows:
+        aid = row["assay_id"]
+        row["assay_parameters"] = _json(params.get(aid, []))
+        row["n_assay_parameters"] = len(params.get(aid, []))
+        row["assay_classifications"] = _json(classes.get(aid, []))
+        row["n_assay_classifications"] = len(classes.get(aid, []))
         c = counts.get(row["assay_id"])
         row["n_activities"] = c["n_act"] if c else 0
         row["n_activities_with_pchembl"] = c["n_pchembl"] if c else 0
@@ -264,6 +321,37 @@ def write_report(rows: list[dict], path: Path, tids: list[int],
     for k, v in st_all.most_common():
         L.append(f"| `{k}` | {v:,} |")
     L.append("")
+
+    # 三个聚合/可选字段的覆盖情况 —— 空值本身也是需要如实记录的事实
+    n_var = sum(1 for r in rows if r["variant_id"])
+    n_par = sum(1 for r in rows if r["n_assay_parameters"])
+    n_cls = sum(1 for r in rows if r["n_assay_classifications"])
+    L.append("## 突变体 / 实验参数 / 实验分类的覆盖情况")
+    L.append("")
+    L.append("| 字段 | 有值的 assay 数 | 说明 |")
+    L.append("| --- | ---: | --- |")
+    L.append(f"| `variant_id` | {n_var} / {len(rows)} | "
+             "非空表示该实验用的是突变体蛋白（如激酶耐药突变）；"
+             "GCK 的天然激活突变若被单独建为 variant 会出现在这里 |")
+    L.append(f"| `assay_parameters` | {n_par} / {len(rows)} | "
+             "实验参数，已聚合为 JSON 列表 |")
+    L.append(f"| `assay_classifications` | {n_cls} / {len(rows)} | "
+             "实验分类，已聚合为 JSON 列表；该表主要覆盖体内/治疗领域实验 |")
+    L.append("")
+    if n_par:
+        ptypes = Counter()
+        for r in rows:
+            for item in json.loads(r["assay_parameters"] or "[]"):
+                ptypes[item.get("type")] += 1
+        L.append("实际出现的参数类型：" +
+                 "、".join(f"`{k}`（{v}）" for k, v in ptypes.most_common()))
+        L.append("")
+        L.append("> 注意：这里的参数**不是**葡萄糖浓度、孵育时间这类实验条件，"
+                 "而是 EFO/MONDO 疾病本体标注。GCK 这批 assay 的实验条件"
+                 "（葡萄糖浓度等）只写在 `assay_description` 自由文本里，"
+                 "没有被结构化到 `assay_parameters`。要按葡萄糖浓度分层，"
+                 "必须自己解析描述文本。")
+        L.append("")
 
     L.append("## 文献年份分布")
     L.append("")

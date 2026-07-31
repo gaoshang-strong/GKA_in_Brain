@@ -4,7 +4,7 @@
 
 target_dictionary.tid → assays.tid → assay_id / assay_chembl_id / assay_description
 
-输出一张 GCK assay 清单，先不搜索小分子。核心目标是从 227 个 assay 中找出真正用于测量 GKA 的实验。
+输出一张 GCK assay 清单，先不搜索小分子。核心目标是从 227 个 assay 中找出真正用于测量 GKA 的实验。一行一个 assay；单值信息展开，多值信息聚合。
 
 使用python，代码名字：
 Step1_2_GCK_Assay_Mapping.py
