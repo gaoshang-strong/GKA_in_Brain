@@ -1,0 +1,3 @@
+accession,component_id,tid,target_chembl_id,pref_name,organism,target_type,component_type,component_description,component_organism,component_tax_id,component_db_source,component_db_version,homologue,target_tax_id,species_group_flag,n_assays,n_assays_conf_ge8,n_activities,n_activities_with_pchembl
+P35557,2138,117123,CHEMBL3885579,Glucokinase/Glucokinase regulatory protein,Homo sapiens,PROTEIN-PROTEIN INTERACTION,PROTEIN,Hexokinase-4,Homo sapiens,9606,SWISS-PROT,2026_01,0,9606,0,1,0,40,37
+P35557,2138,20095,CHEMBL3820,Hexokinase-4,Homo sapiens,SINGLE PROTEIN,PROTEIN,Hexokinase-4,Homo sapiens,9606,SWISS-PROT,2026_01,0,9606,0,227,227,3222,1389
