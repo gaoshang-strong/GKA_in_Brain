@@ -1,6 +1,6 @@
 # ChEMBL 数据库结构与内容概览报告
 
-> 自动生成于 2026-07-30 18:04　|　数据库文件：`/ShangGaoAIProjects/GKA_in_Brain/ChEMBL/ChEMBL_37/chembl_37/chembl_37_sqlite/chembl_37.db`
+> 自动生成于 2026-07-30 20:57　|　数据库文件：`/ShangGaoAIProjects/GKA_in_Brain/ChEMBL/ChEMBL_37/chembl_37/chembl_37_sqlite/chembl_37.db`
 >
 > 本报告面向**有生物学 / 生信背景、但没有药物化学背景**的读者。每一节先解释「这是什么」，再给出这个数据库里的实际统计。
 
@@ -490,33 +490,36 @@ ChEMBL 不是单一来源。`source` 表列出了所有数据源，`activities.s
 
 ### 6.1 靶点类型
 
-| target_type | 数量 |  | 说明 |
-| --- | ---: | --- | --- |
-| SINGLE PROTEIN | 11,055 | ██████████████████ | 单一蛋白 — 可直接对应一个 UniProt / 基因 |
-| ORGANISM | 2,784 | █████ | 整个生物体（如某种细菌、寄生虫） |
-| CELL-LINE | 2,000 | ███ | 细胞系整体（表型筛选） |
-| PROTEIN-PROTEIN INTERACTION | 804 | █ | 蛋白-蛋白相互作用界面（如分子胶/降解剂的作用对象） |
-| PROTEIN COMPLEX | 647 | █ | 蛋白复合物（多亚基共同构成作用对象） |
-| PROTEIN FAMILY | 428 | █ | 蛋白家族（未细分到具体成员） |
-| TISSUE | 293 |  | 组织 |
-| NUCLEIC-ACID | 129 |  | 核酸 |
-| SELECTIVITY GROUP | 123 |  | 选择性分组（用于比较同一化合物对一组相关靶点的选择性） |
-| PROTEIN COMPLEX GROUP | 67 |  | 复合物家族 |
-| SMALL MOLECULE | 49 |  | 小分子作为作用对象（如螯合剂） |
-| CHIMERIC PROTEIN | 35 |  | 嵌合蛋白 |
-| UNKNOWN | 24 |  | 未知 |
-| OLIGOSACCHARIDE | 22 |  | 寡糖 |
-| SUBCELLULAR | 20 |  | 亚细胞结构 |
-| MACROMOLECULE | 19 |  | 大分子 |
-| PROTEIN NUCLEIC-ACID COMPLEX | 15 |  | 蛋白-核酸复合物 |
-| LIPID | 11 |  | 脂质 |
-| 3D CELL CULTURE | 11 |  | 三维细胞培养体系（类器官等） |
-| METAL | 10 |  | 金属离子 |
-| PHENOTYPE | 2 |  | 表型 |
-| UNCHECKED | 1 |  | 未审核 |
-| NON-MOLECULAR | 1 |  | 非分子实体 |
-| NO TARGET | 1 |  | 无靶点信息 |
-| ADMET | 1 |  | ADMET 性质 |
+
+「官方描述」一列读自库内的 `target_type` 字典表，中文一列是本脚本的补充注解。
+
+| target_type | 数量 |  | 官方描述（原文） | 中文说明 |
+| --- | ---: | --- | --- | --- |
+| SINGLE PROTEIN | 11,055 | ████████████ | Target is a single protein chain | 单一蛋白 — 可直接对应一个 UniProt / 基因 |
+| ORGANISM | 2,784 | ███ | Target is a complete organism | 整个生物体（如某种细菌、寄生虫） |
+| CELL-LINE | 2,000 | ██ | Target is a specific cell-line | 细胞系整体（表型筛选） |
+| PROTEIN-PROTEIN INTERACTION | 804 | █ | Target is the disruption of a protein-protein interaction | 以蛋白-蛋白相互作用为对象（官方定义为破坏 PPI；ChEMBL 37 起也用于靶向蛋白降解的效应蛋白/靶蛋白对） |
+| PROTEIN COMPLEX | 647 | █ | Target is a defined protein complex, consisting of multiple subunits | 蛋白复合物（多亚基共同构成作用对象） |
+| PROTEIN FAMILY | 428 |  | Target is a group of closely related proteins | 蛋白家族（未细分到具体成员） |
+| TISSUE | 293 |  | Target is a healthy or diseased tissue | 组织 |
+| NUCLEIC-ACID | 129 |  | Target is DNA, RNA or PNA | 核酸 |
+| SELECTIVITY GROUP | 123 |  | Target is a pair of proteins for which the selectivity has been assessed | 一对蛋白，用于评估化合物在两者之间的选择性 |
+| PROTEIN COMPLEX GROUP | 67 |  | Target is a poorly defined protein complex, where subunit composition is unclear (e.g., GABA-A receptor) | 亚基组成不明确的蛋白复合物（如 GABA-A 受体），不是「家族」 |
+| SMALL MOLECULE | 49 |  | Target is a small molecule such as an amino acid, sugar or metabolite) | 小分子作为作用对象（如氨基酸、糖、代谢物） |
+| CHIMERIC PROTEIN | 35 |  | Target is a fusion of two different proteins, either a synthetic construct or naturally occurring fusion protein | 嵌合蛋白 |
+| UNKNOWN | 24 |  | Molecular identity of target is unknown (e.g., pharmacologically defined target) | 靶点的分子身份未知（药理学上定义的靶点） |
+| OLIGOSACCHARIDE | 22 |  | Target is an oligosaccharide (e.g., heparin, starch) | 寡糖 |
+| SUBCELLULAR | 20 |  | Target is a subcellular fraction | 亚细胞组分／制备物 |
+| MACROMOLECULE | 19 |  | Target is a biological macromolecule (e.g., glycoproteins, hemozoin, hydroxyapatite) | 大分子 |
+| PROTEIN NUCLEIC-ACID COMPLEX | 15 |  | Target is a complex consisting of both protein and nucleic-acid components (e.g., ribosome) | 蛋白-核酸复合物 |
+| LIPID | 11 |  | Target is a lipid | 脂质 |
+| 3D CELL CULTURE | 11 |  | Target is a 3D cell culture model such as an organoid, sphereoid or tumoroid that mimics tissues or organs | 三维细胞培养体系（类器官等） |
+| METAL | 10 |  | Target is a metal e.g., iron | 金属离子 |
+| PHENOTYPE | 2 |  | Target is a biological phenotype or process | 表型 |
+| UNCHECKED | 1 |  | Target has not yet been assigned | 尚未指认靶点 |
+| NON-MOLECULAR | 1 |  | Target has not been defined at a molecular level, only the non-molecular entity which is affected (e.g., organism, cell line etc) | 非分子实体 |
+| NO TARGET | 1 |  | Target is not applicable for a screening assay (e.g., negative control/counterscreen) | 该实验本就不适用靶点概念（如阴性对照、反筛） |
+| ADMET | 1 |  | Target is not applicable for an ADMET assay (e.g., physchem property) | ADMET 实验，本就不适用靶点概念（如理化性质） |
 
 
 ### 6.2 靶点物种分布（Top 20）
@@ -702,7 +705,7 @@ WHERE cs.component_synonym = 'GCK'        -- 基因名
 | 有标准化数值 `standard_value` | 21,129,848 | 86.1% | 没有数值的多为定性结论（Active/Inactive） |
 | 有 `pchembl_value` | 4,969,278 | 20.3% | **做定量分析的可用子集** |
 | `standard_relation = '='` | 15,047,664 | 61.4% | 精确值；其余为 > / < 的删失数据 |
-| 被标记数据可疑 `data_validity_comment` | 353,204 | 1.4% | 建议剔除 |
+| 有 `data_validity_comment` 标记 | 353,204 | 1.4% | 多数是可疑标记（建议剔除），但 `Manually validated` 是正面标记，见 §8.6 |
 | 疑似重复引用 `potential_duplicate = 1` | 355,508 | 1.4% | 同一数值被多篇文献转述，建议剔除 |
 | 已人工标准化 `standard_flag = 1` | 15,880,656 | 64.7% |  |
 | 有 `modality` 标注 | 29,083 | 0.1% | ChEMBL 37 起新增，目前主要标注靶向蛋白降解 |
@@ -711,30 +714,34 @@ WHERE cs.component_synonym = 'GCK'        -- 基因名
 ### 8.2 测量指标 standard_type（Top 20）
 
 
-每一行是一种「测的是什么量」。下面的中文解释是本脚本内置的，供非药学背景读者参考。
+每一行是一种「测的是什么量」。**「官方定义」一列读自库内的 `activity_stds_lookup` 表**，中文一列是本脚本的补充注解。
 
-| standard_type | 数量 |  | 这是什么 |
-| --- | ---: | --- | --- |
-| `Potency` | 4,473,542 | ████████████████ | 效价，PubChem 高通量筛选里对 IC50/EC50 的统称 |
-| `IC50` | 3,623,879 | █████████████ | 半数抑制浓度：让目标活性下降 50% 所需的化合物浓度。数值越小 = 越强 |
-| `GI50` | 2,631,731 | █████████ | 抑制 50% 细胞生长所需浓度（细胞水平） |
-| `Inhibition` | 1,624,513 | ██████ | 在某个固定浓度下的抑制百分比（%），不是浓度值 |
-| `Activity` | 1,415,489 | █████ | 笼统的“活性”，单位/含义随实验而异，通常需要看 assay 描述 |
-| `Percent Effect` | 1,328,366 | █████ | 在固定浓度下的效应百分比 |
-| `Ki` | 887,151 | ███ | 抑制常数：抑制剂与靶点的结合亲和力（热力学量）。越小 = 结合越紧 |
-| `k_off` | 826,525 | ███ | 解离速率常数：配体从靶点上脱落的快慢；k_off 越小停留时间越长 |
-| `kon` | 826,356 | ███ | 结合速率常数：配体与靶点结合的快慢（结合动力学） |
-| `MIC` | 798,852 | ███ | 最低抑菌浓度：抑制细菌生长的最低浓度（抗菌实验） |
-| `EC50` | 613,608 | ██ | 半数效应浓度：产生 50% 最大效应所需浓度。数值越小 = 越强 |
-| `INHIBITION` | 339,133 | █ |  |
-| `AC50` | 286,628 | █ | 半数活性浓度（IC50/EC50 的中性叫法，常见于高通量筛选） |
-| `Kd` | 213,575 | █ | 解离常数：配体-靶点结合亲和力。越小 = 结合越紧 |
-| `Z score` | 147,592 | █ | 高通量筛选的标准化打分（相对对照组的偏离程度），不是浓度 |
-| `Ratio IC50` | 147,260 | █ | 两个 IC50 的比值，常用于表示选择性 |
-| `GI` | 132,461 |  | 生长抑制（百分比或定性） |
-| `Tissue Severity Score` | 128,999 |  | 组织病理学评分（毒理实验中对病变严重程度的分级） |
-| `Ratio` | 126,526 |  | 两个测量值的比值 |
-| `CC50` | 107,782 |  | 细胞毒性浓度：杀死 50% 细胞所需浓度 |
+这张表还有个额外用处：**能不能在 `activity_stds_lookup` 里查到，本身就是一个质量信号**。查得到，说明 ChEMBL 为它定义了标准单位和合理取值范围，会做单位换算与越界检查；查不到（下表中官方定义为「—」的那些，如 `Activity`、`Percent Effect`），说明它是原样收录的自由文本，**含义随实验而异，不能跨实验汇总**。
+
+| standard_type | 数量 |  | 官方定义（原文） | 标准单位 | 中文说明 |
+| --- | ---: | --- | --- | --- | --- |
+| `Potency` | 4,473,542 | ██████████ | Concentration or dose required to elicit a specific response | nM | 引发特定效应所需的浓度或剂量；PubChem 高通量筛选数据大量使用这个名字 |
+| `IC50` | 3,623,879 | ████████ | Concentration required for 50% inhibition | nM／ug.mL-1 | 半数抑制浓度：让目标活性下降 50% 所需的化合物浓度。数值越小 = 越强 |
+| `GI50` | 2,631,731 | ██████ | Concentration required for 50% growth inhibition | nM／ug.mL-1 | 抑制 50% 细胞生长所需浓度（细胞水平） |
+| `Inhibition` | 1,624,513 | ████ | Inhibition | % | 在某个固定浓度下的抑制百分比（%），不是浓度值 |
+| `Activity` | 1,415,489 | ███ | — | — | 笼统的“活性”，单位/含义随实验而异，通常需要看 assay 描述 |
+| `Percent Effect` | 1,328,366 | ███ | — | — | 在固定浓度下的效应百分比 |
+| `Ki` | 887,151 | ██ | Inhibition constant | nM | 抑制常数：抑制剂与靶点的结合亲和力（热力学量）。越小 = 结合越紧 |
+| `k_off` | 826,525 | ██ | Dissociation rate constant | s-1 | 解离速率常数：配体从靶点上脱落的快慢；k_off 越小停留时间越长 |
+| `kon` | 826,356 | ██ | — | — | 结合速率常数（官方标准写法是 `k_on`，单位 M-1.s-1；数据里 `kon` 是未标准化的写法） |
+| `MIC` | 798,852 | ██ | Minimum inhibitory concentration | nM／ug.mL-1 | 最低抑菌浓度：抑制细菌生长的最低浓度（抗菌实验） |
+| `EC50` | 613,608 | █ | Effective concentration for 50% activity | nM／ug.mL-1 | 半数效应浓度：产生 50% 最大效应所需浓度。数值越小 = 越强 |
+| `INHIBITION` | 339,133 | █ | — | — |  |
+| `AC50` | 286,628 | █ | Concentration required for 50% activity | nM | 半数活性浓度（IC50/EC50 的中性叫法，常见于高通量筛选） |
+| `Kd` | 213,575 |  | Dissociation constant | nM | 解离常数：配体-靶点结合亲和力。越小 = 结合越紧 |
+| `Z score` | 147,592 |  | — | — | 高通量筛选的标准化打分（相对对照组的偏离程度），不是浓度 |
+| `Ratio IC50` | 147,260 |  | — | — | 两个 IC50 的比值，常用于表示选择性 |
+| `GI` | 132,461 |  | — | — | 生长抑制（百分比或定性） |
+| `Tissue Severity Score` | 128,999 |  | — | — | 组织病理学评分（毒理实验中对病变严重程度的分级） |
+| `Ratio` | 126,526 |  | — | — | 两个测量值的比值 |
+| `CC50` | 107,782 |  | Concentration required for 50% cytotoxicity | nM／ug.mL-1 | 细胞毒性浓度：杀死 50% 细胞所需浓度 |
+
+> 上面 20 个最常见的类型里，只有 **11** 个有官方标准化规则。越靠后的类型越可能是未标准化的自由文本。
 
 > ⚠️ **陷阱：同一指标存在大小写/写法不同的变体**，它们在数据库里是不同的字符串，`GROUP BY standard_type` 会把它们拆开。本库中最主要的几组：
 >
@@ -753,7 +760,11 @@ WHERE cs.component_synonym = 'GCK'        -- 基因名
 ### 8.3 标准化单位 standard_units（Top 15）
 
 
-> 标准化后，浓度一律为 **nM**。看到 `%` 说明是百分比读数（如抑制率），看到 `(空)` 多半是无量纲比值或定性结论。**不同单位的数值绝不能混在一起做统计。**
+**「浓度一律换算成 nM」是个流传很广但不准确的说法。** 实际规则是：ChEMBL 为每个标准类型规定了一组允许的标准单位，浓度型指标以 **nM** 为主，但 **`ug.mL-1` 同样是官方认可的标准单位**——当样品分子量未知时（天然产物提取物、抗菌 MIC 等）只能用质量浓度。
+
+本库的实测情况：`ug.mL-1` 中有 **966,267** 条 `standard_flag = 1`（确实是标准化过的）；而 `uM` 共 249,613 条，其中 `standard_flag = 1` 的只有 **0** 条——**看到 `uM` 基本就意味着这条记录压根没被标准化**，用之前要自己换算并核对。
+
+> 看到 `%` 说明是百分比读数（如抑制率），`(空)` 多半是无量纲比值或定性结论。**不同单位的数值绝不能混在一起做统计。**
 
 | 单位 | 数量 |
 | --- | ---: |
@@ -815,14 +826,17 @@ WHERE cs.component_synonym = 'GCK'        -- 基因名
 
 ### 8.6 被标记为可疑的数据
 
-| data_validity_comment | 数量 |
-| --- | ---: |
-| Outside typical range | 345,635 |
-| Potential transcription error | 4,398 |
-| Potential missing data | 2,509 |
-| Manually validated | 505 |
-| Potential author error | 155 |
-| Author confirmed error | 2 |
+
+> 注意 `Manually validated` 是**正面**标记（已对照原文核实无误），不要因为它出现在这一列就一并剔除。官方描述读自 `data_validity_lookup` 表。
+
+| data_validity_comment | 数量 | 官方描述（原文） |
+| --- | ---: | --- |
+| Outside typical range | 345,635 | Values for this activity type are unusually large/small, so may not be accurate |
+| Potential transcription error | 4,398 | Values appear to be an order of magnitude different from previously reported, so units may be incorrect |
+| Potential missing data | 2,509 | No data provided for value, units or activity_comment, needs further investigation |
+| Manually validated | 505 | Data have been checked against the publication and are believed to be accurate |
+| Potential author error | 155 | Data have been checked against the publication and are as reported - possibly an error was made by the author |
+| Author confirmed error | 2 | Error in publication - Author confirmed (personal communication) |
 
 
 ### 8.7 modality（作用模态）
@@ -1021,25 +1035,25 @@ ChEMBL 37 新增字段，标注化合物的设计模态。目前主要值是「�
 ### 9.4 药物作用类型 action_type（Top 15）
 
 
-> `INHIBITOR`（抑制剂）降低靶点活性，`AGONIST`（激动剂）模拟天然配体激活靶点，`ANTAGONIST`（拮抗剂）阻断天然配体，`BLOCKER` 多用于离子通道。`action_type` 表还给出了上位归类（正向/负向调节）。
+> 描述与上位归类读自库内的 `action_type` 表。`parent_type` 把细分类型归成正向调节 / 负向调节 / 其他三大类，做粗粒度分析时用它比用 `action_type` 更稳。
 
-| action_type | 数量 |
-| --- | ---: |
-| `INHIBITOR` | 3,586 |
-| `ANTAGONIST` | 980 |
-| `AGONIST` | 949 |
-| `(空)` | 577 |
-| `BINDING AGENT` | 284 |
-| `BLOCKER` | 179 |
-| `MODULATOR` | 111 |
-| `POSITIVE ALLOSTERIC MODULATOR` | 82 |
-| `HYDROLYTIC ENZYME` | 77 |
-| `ACTIVATOR` | 73 |
-| `PARTIAL AGONIST` | 64 |
-| `DISRUPTING AGENT` | 59 |
-| `VACCINE ANTIGEN` | 56 |
-| `EXOGENOUS PROTEIN` | 50 |
-| `SEQUESTERING AGENT` | 46 |
+| action_type | 数量 | parent_type | 官方描述（原文） |
+| --- | ---: | --- | --- |
+| `INHIBITOR` | 3,586 | NEGATIVE MODULATOR | Negatively effects (inhibits) the normal functioning of the protein e.g., prevention of enzymatic reaction or activation of downstream pathway |
+| `ANTAGONIST` | 980 | NEGATIVE MODULATOR | Binds to a receptor and prevents activation by an agonist through competing for the binding site |
+| `AGONIST` | 949 | POSITIVE MODULATOR | Binds to and activates a receptor, often mimicking the effect of the endogenous ligand |
+| `(空)` | 577 | — | — |
+| `BINDING AGENT` | 284 | OTHER | Binds to a substance such as a cell surface antigen, targeting a drug to that location, but not necessarily affecting the functioning of the substance itself |
+| `BLOCKER` | 179 | NEGATIVE MODULATOR | Negatively effects the normal functioning of an ion channel e.g., prevents or reduces transport of ions through the channel |
+| `MODULATOR` | 111 | OTHER | Effects the normal functioning of a protein in some way e.g., mixed agonist/antagonist or unclear whether action is positive or negative |
+| `POSITIVE ALLOSTERIC MODULATOR` | 82 | POSITIVE MODULATOR | Enhances the action of the endogenous ligand of a receptor through binding to a site distinct from that ligand |
+| `HYDROLYTIC ENZYME` | 77 | OTHER | Hydrolyses a substrate through enzymatic reaction |
+| `ACTIVATOR` | 73 | POSITIVE MODULATOR | Positively effects the normal functioning of the protein e.g., activation of an enzyme or cleaving a clotting protein precursor |
+| `PARTIAL AGONIST` | 64 | POSITIVE MODULATOR | Binds to and only partially activates a receptor (relative to the response to a full agonist) |
+| `DISRUPTING AGENT` | 59 | OTHER | Destabilises or disrupts a protein complex, macromolecular assembly, cell membrane etc |
+| `VACCINE ANTIGEN` | 56 | OTHER | Delivers an antigen and promotes an immune response against the antigen e.g. activating the immune system towards cancer-specific biomarkers |
+| `EXOGENOUS PROTEIN` | 50 | POSITIVE MODULATOR | Protein from an exogenous source acts as a substitute or supplement for a specific protein which is absent or has reduced function in affected patients |
+| `SEQUESTERING AGENT` | 46 | OTHER | Binds to a substance such as a drug, toxin or metabolite reducing its availability for further interactions |
 
 
 ## 10. 上手：几个可直接运行的查询
@@ -1129,7 +1143,7 @@ df = pd.read_sql_query(open('query.sql').read(), con)
 | 不过滤 `confidence_score` | 把归因到细胞、组织、整个生物体的数据当成单一蛋白上的活性 | 建模用 `>= 8`（单一蛋白）；只要直接实测则用 `= 9` |
 | 把 `confidence_score` 当成数据质量分 | 误以为低分 = 实验做得差；实际它描述的是靶点粒度与指认方式 | 见 §7.2；低分数据在表型筛选场景下完全可用 |
 | 混用不同 `standard_type` | IC50 与 Ki 与 %抑制率不可比 | 分开处理；至少分开 IC50/EC50 与 Ki/Kd |
-| 忽略 `potential_duplicate` / `data_validity_comment` | 同一数值被重复计数；纳入已知错误值 | 两者都加进过滤条件 |
+| 忽略 `potential_duplicate` / `data_validity_comment` | 同一数值被重复计数；纳入已知错误值 | 两者都加进过滤条件；但注意 `data_validity_comment IS NULL` 会连 `Manually validated` 的记录一起丢掉 |
 | 把化合物记录数当成化合物数 | `compound_records` 是文献级的，数量远大于唯一化合物 | 唯一化合物看 `molecule_dictionary` |
 | 把盐和母体当成两个分子 | 同一药物的不同盐型被算作不同化合物 | 用 `molecule_hierarchy` 归并到 parent_molregno |
 | 假设「没有数据 = 没有活性」 | ChEMBL 存在强烈发表偏倚，阴性结果严重缺失 | 做机器学习时需谨慎构造负样本 |

@@ -114,7 +114,7 @@ ACT_TYPE_DESC = {
     "Ki": "抑制常数：抑制剂与靶点的结合亲和力（热力学量）。越小 = 结合越紧",
     "Kd": "解离常数：配体-靶点结合亲和力。越小 = 结合越紧",
     "AC50": "半数活性浓度（IC50/EC50 的中性叫法，常见于高通量筛选）",
-    "Potency": "效价，PubChem 高通量筛选里对 IC50/EC50 的统称",
+    "Potency": "引发特定效应所需的浓度或剂量；PubChem 高通量筛选数据大量使用这个名字",
     "GI50": "抑制 50% 细胞生长所需浓度（细胞水平）",
     "CC50": "细胞毒性浓度：杀死 50% 细胞所需浓度",
     "TC50": "半数毒性浓度",
@@ -125,20 +125,19 @@ ACT_TYPE_DESC = {
     "Percent Effect": "在固定浓度下的效应百分比",
     "Ratio": "两个测量值的比值",
     "Km": "米氏常数（酶动力学）",
-    "Kb": "拮抗剂解离常数",
-    "pA2 / pIC50 / pKi": "已取负对数的形式（见下文 pChEMBL）",
+    "Kb": "平衡结合常数（官方定义 equilibrium binding constant，不是拮抗剂解离常数）",
     "T1/2": "半衰期：体内或体外浓度下降一半所需时间（ADME 指标）",
-    "Cmax": "血药峰浓度（药代动力学）",
-    "AUC": "血药浓度-时间曲线下面积（药代动力学，反映总暴露量）",
-    "CL": "清除率（药代动力学）",
+    "Cmax": "峰浓度：给药后达到的最高浓度（可以是血浆，也可以是组织）",
+    "AUC": "浓度-时间曲线下面积，反映总暴露量（血浆或组织）",
+    "CL": "清除率：单位时间被清除掉的表观体积；也用于体外固有清除率",
     "Papp": "表观渗透系数：分子跨细胞膜（如 Caco-2 单层）的能力",
     "Solubility": "溶解度",
     "LogP": "脂水分配系数：分子的亲脂性（正辛醇/水）",
     "LogD": "在特定 pH 下的分配系数",
-    "Fu": "游离分数：血浆中未与蛋白结合的比例",
+    "Fu": "未结合分数：未与蛋白结合的游离比例（血浆或微粒体）",
     "Emax": "最大效应",
     "Selectivity ratio": "选择性比值（对靶点 A 与靶点 B 的活性之比）",
-    "kon": "结合速率常数：配体与靶点结合的快慢（结合动力学）",
+    "kon": "结合速率常数（官方标准写法是 `k_on`，单位 M-1.s-1；数据里 `kon` 是未标准化的写法）",
     "k_off": "解离速率常数：配体从靶点上脱落的快慢；k_off 越小停留时间越长",
     "Residence time": "停留时间 = 1/k_off，药物在靶点上待多久",
     "Z score": "高通量筛选的标准化打分（相对对照组的偏离程度），不是浓度",
@@ -204,22 +203,22 @@ TARGET_TYPE_NOTE = {
     "SINGLE PROTEIN": "单一蛋白 — 可直接对应一个 UniProt / 基因",
     "PROTEIN COMPLEX": "蛋白复合物（多亚基共同构成作用对象）",
     "PROTEIN FAMILY": "蛋白家族（未细分到具体成员）",
-    "PROTEIN COMPLEX GROUP": "复合物家族",
+    "PROTEIN COMPLEX GROUP": "亚基组成不明确的蛋白复合物（如 GABA-A 受体），不是「家族」",
     "CELL-LINE": "细胞系整体（表型筛选）",
     "ORGANISM": "整个生物体（如某种细菌、寄生虫）",
     "TISSUE": "组织",
-    "UNCHECKED": "未审核",
-    "NO TARGET": "无靶点信息",
-    "PROTEIN-PROTEIN INTERACTION": "蛋白-蛋白相互作用界面（如分子胶/降解剂的作用对象）",
+    "UNCHECKED": "尚未指认靶点",
+    "NO TARGET": "该实验本就不适用靶点概念（如阴性对照、反筛）",
+    "PROTEIN-PROTEIN INTERACTION": "以蛋白-蛋白相互作用为对象（官方定义为破坏 PPI；ChEMBL 37 起也用于靶向蛋白降解的效应蛋白/靶蛋白对）",
     "NUCLEIC-ACID": "核酸",
-    "SUBCELLULAR": "亚细胞结构",
+    "SUBCELLULAR": "亚细胞组分／制备物",
     "CHIMERIC PROTEIN": "嵌合蛋白",
     "MACROMOLECULE": "大分子",
-    "SMALL MOLECULE": "小分子作为作用对象（如螯合剂）",
+    "SMALL MOLECULE": "小分子作为作用对象（如氨基酸、糖、代谢物）",
     "PHENOTYPE": "表型",
-    "ADMET": "ADMET 性质",
-    "UNKNOWN": "未知",
-    "SELECTIVITY GROUP": "选择性分组（用于比较同一化合物对一组相关靶点的选择性）",
+    "ADMET": "ADMET 实验，本就不适用靶点概念（如理化性质）",
+    "UNKNOWN": "靶点的分子身份未知（药理学上定义的靶点）",
+    "SELECTIVITY GROUP": "一对蛋白，用于评估化合物在两者之间的选择性",
     "OLIGOSACCHARIDE": "寡糖",
     "PROTEIN NUCLEIC-ACID COMPLEX": "蛋白-核酸复合物",
     "LIPID": "脂质",
@@ -807,11 +806,16 @@ def sec_targets(r: Report, db: DB, args) -> None:
     if db.has_col("target_dictionary", "target_type"):
         rows = db.q("SELECT COALESCE(target_type,'(空)'), COUNT(*) c FROM target_dictionary GROUP BY 1 ORDER BY c DESC")
         vmax = max([x[1] for x in rows], default=0)
+        tt_off = {x[0]: x[1] for x in db.q("SELECT target_type, target_desc FROM target_type")}
         r.h(3, "6.1 靶点类型")
+        r("")
+        r("「官方描述」一列读自库内的 `target_type` 字典表，中文一列是本脚本的补充注解。")
+        r("")
         r.table(
-            ["target_type", "数量", "", "说明"],
-            [[x[0], fmt(x[1]), bar(x[1], vmax, 18), TARGET_TYPE_NOTE.get(x[0], "")] for x in rows],
-            aligns=["---", "---:", "---", "---"],
+            ["target_type", "数量", "", "官方描述（原文）", "中文说明"],
+            [[x[0], fmt(x[1]), bar(x[1], vmax, 12), tt_off.get(x[0], "—"),
+              TARGET_TYPE_NOTE.get(x[0], "")] for x in rows],
+            aligns=["---", "---:", "---", "---", "---"],
         )
 
     if db.has_col("target_dictionary", "organism"):
@@ -977,7 +981,7 @@ def sec_activities(r: Report, db: DB, args) -> None:
             ["有标准化数值 `standard_value`", fmt(v[1]), pct(v[1], total), "没有数值的多为定性结论（Active/Inactive）"],
             ["有 `pchembl_value`", fmt(v[2]), pct(v[2], total), "**做定量分析的可用子集**"],
             ["`standard_relation = '='`", fmt(v[3]), pct(v[3], total), "精确值；其余为 > / < 的删失数据"],
-            ["被标记数据可疑 `data_validity_comment`", fmt(v[4]), pct(v[4], total), "建议剔除"],
+            ["有 `data_validity_comment` 标记", fmt(v[4]), pct(v[4], total), "多数是可疑标记（建议剔除），但 `Manually validated` 是正面标记，见 §8.6"],
             ["疑似重复引用 `potential_duplicate = 1`", fmt(v[5]), pct(v[5], total), "同一数值被多篇文献转述，建议剔除"],
             ["已人工标准化 `standard_flag = 1`", fmt(v[6]), pct(v[6], total), ""],
         ]
@@ -991,15 +995,35 @@ def sec_activities(r: Report, db: DB, args) -> None:
     rows = db.q(f"SELECT COALESCE(standard_type,'(空)'), COUNT(*) c FROM activities GROUP BY 1 ORDER BY c DESC LIMIT {args.top}")
     if rows:
         vmax = max(x[1] for x in rows)
+        # 官方定义读自 activity_stds_lookup（同一 type 可能有多行，只是允许的单位不同）
+        std_off: dict[str, str] = {}
+        std_units: dict[str, set] = {}
+        for st, defn, un in db.q("SELECT standard_type, definition, standard_units FROM activity_stds_lookup"):
+            std_off[st] = defn
+            std_units.setdefault(st, set()).add(un)
+
         r.h(3, f"8.2 测量指标 standard_type（Top {args.top}）")
         r("")
-        r("每一行是一种「测的是什么量」。下面的中文解释是本脚本内置的，供非药学背景读者参考。")
+        r("每一行是一种「测的是什么量」。**「官方定义」一列读自库内的 `activity_stds_lookup` 表**，"
+          "中文一列是本脚本的补充注解。")
+        r("")
+        r("这张表还有个额外用处：**能不能在 `activity_stds_lookup` 里查到，本身就是一个质量信号**。"
+          "查得到，说明 ChEMBL 为它定义了标准单位和合理取值范围，会做单位换算与越界检查；"
+          "查不到（下表中官方定义为「—」的那些，如 `Activity`、`Percent Effect`），"
+          "说明它是原样收录的自由文本，**含义随实验而异，不能跨实验汇总**。")
         r("")
         r.table(
-            ["standard_type", "数量", "", "这是什么"],
-            [[f"`{x[0]}`", fmt(x[1]), bar(x[1], vmax, 16), ACT_TYPE_DESC.get(x[0], "")] for x in rows],
-            aligns=["---", "---:", "---", "---"],
+            ["standard_type", "数量", "", "官方定义（原文）", "标准单位", "中文说明"],
+            [[f"`{x[0]}`", fmt(x[1]), bar(x[1], vmax, 10),
+              std_off.get(x[0], "—"),
+              "／".join(sorted(u for u in std_units.get(x[0], set()) if u)) or "—",
+              ACT_TYPE_DESC.get(x[0], "")] for x in rows],
+            aligns=["---", "---:", "---", "---", "---", "---"],
         )
+        n_std = sum(1 for x in rows if x[0] in std_off)
+        r(f"> 上面 {len(rows)} 个最常见的类型里，只有 **{n_std}** 个有官方标准化规则。"
+          "越靠后的类型越可能是未标准化的自由文本。")
+        r("")
         # 大小写变体是个真实存在的坑，自动检测并提醒
         allt = db.q("SELECT standard_type, COUNT(*) FROM activities WHERE standard_type IS NOT NULL GROUP BY 1")
         groups: dict[str, list] = {}
@@ -1023,8 +1047,20 @@ def sec_activities(r: Report, db: DB, args) -> None:
     if rows:
         r.h(3, "8.3 标准化单位 standard_units（Top 15）")
         r("")
-        r("> 标准化后，浓度一律为 **nM**。看到 `%` 说明是百分比读数（如抑制率），"
-          "看到 `(空)` 多半是无量纲比值或定性结论。**不同单位的数值绝不能混在一起做统计。**")
+        r("**「浓度一律换算成 nM」是个流传很广但不准确的说法。** 实际规则是："
+          "ChEMBL 为每个标准类型规定了一组允许的标准单位，浓度型指标以 **nM** 为主，"
+          "但 **`ug.mL-1` 同样是官方认可的标准单位**——"
+          "当样品分子量未知时（天然产物提取物、抗菌 MIC 等）只能用质量浓度。")
+        r("")
+        um = db.one("SELECT COUNT(*) FROM activities WHERE standard_units = 'uM'") or 0
+        um_std = db.one("SELECT COUNT(*) FROM activities WHERE standard_units = 'uM' AND standard_flag = 1") or 0
+        ug_std = db.one("SELECT COUNT(*) FROM activities WHERE standard_units = 'ug.mL-1' AND standard_flag = 1") or 0
+        r(f"本库的实测情况：`ug.mL-1` 中有 **{fmt(ug_std)}** 条 `standard_flag = 1`（确实是标准化过的）；"
+          f"而 `uM` 共 {fmt(um)} 条，其中 `standard_flag = 1` 的只有 **{fmt(um_std)}** 条——"
+          "**看到 `uM` 基本就意味着这条记录压根没被标准化**，用之前要自己换算并核对。")
+        r("")
+        r("> 看到 `%` 说明是百分比读数（如抑制率），`(空)` 多半是无量纲比值或定性结论。"
+          "**不同单位的数值绝不能混在一起做统计。**")
         r("")
         r.table(["单位", "数量"], [[f"`{x[0]}`", fmt(x[1])] for x in rows], aligns=["---", "---:"])
 
@@ -1063,8 +1099,15 @@ def sec_activities(r: Report, db: DB, args) -> None:
     # data_validity_comment 明细
     rows = db.q("SELECT data_validity_comment, COUNT(*) c FROM activities WHERE data_validity_comment IS NOT NULL GROUP BY 1 ORDER BY c DESC")
     if rows:
+        dv_off = {x[0]: x[1] for x in db.q("SELECT data_validity_comment, description FROM data_validity_lookup")}
         r.h(3, "8.6 被标记为可疑的数据")
-        r.table(["data_validity_comment", "数量"], [[x[0], fmt(x[1])] for x in rows], aligns=["---", "---:"])
+        r("")
+        r("> 注意 `Manually validated` 是**正面**标记（已对照原文核实无误），"
+          "不要因为它出现在这一列就一并剔除。官方描述读自 `data_validity_lookup` 表。")
+        r("")
+        r.table(["data_validity_comment", "数量", "官方描述（原文）"],
+                [[x[0], fmt(x[1]), dv_off.get(x[0], "—")] for x in rows],
+                aligns=["---", "---:", "---"])
 
     if has_mod:
         rows = db.q("SELECT modality, COUNT(*) c FROM activities WHERE modality IS NOT NULL GROUP BY 1 ORDER BY c DESC")
@@ -1232,13 +1275,16 @@ def sec_docs_drugs(r: Report, db: DB, args) -> None:
 
     if db.has_table("drug_mechanism") and db.has_col("drug_mechanism", "action_type"):
         rows = db.q("SELECT COALESCE(action_type,'(空)'), COUNT(*) c FROM drug_mechanism GROUP BY 1 ORDER BY c DESC LIMIT 15")
+        at_off = {x[0]: (x[1], x[2]) for x in db.q("SELECT action_type, description, parent_type FROM action_type")}
         r.h(3, "9.4 药物作用类型 action_type（Top 15）")
         r("")
-        r("> `INHIBITOR`（抑制剂）降低靶点活性，`AGONIST`（激动剂）模拟天然配体激活靶点，"
-          "`ANTAGONIST`（拮抗剂）阻断天然配体，`BLOCKER` 多用于离子通道。"
-          "`action_type` 表还给出了上位归类（正向/负向调节）。")
+        r("> 描述与上位归类读自库内的 `action_type` 表。`parent_type` 把细分类型归成"
+          "正向调节 / 负向调节 / 其他三大类，做粗粒度分析时用它比用 `action_type` 更稳。")
         r("")
-        r.table(["action_type", "数量"], [[f"`{x[0]}`", fmt(x[1])] for x in rows], aligns=["---", "---:"])
+        r.table(["action_type", "数量", "parent_type", "官方描述（原文）"],
+                [[f"`{x[0]}`", fmt(x[1]), at_off.get(x[0], ("", "—"))[1] or "—",
+                  at_off.get(x[0], ("—", ""))[0]] for x in rows],
+                aligns=["---", "---:", "---", "---"])
 
 
 def sec_recipes(r: Report, db: DB, args) -> None:
@@ -1325,7 +1371,7 @@ def sec_recipes(r: Report, db: DB, args) -> None:
             ["不过滤 `confidence_score`", "把归因到细胞、组织、整个生物体的数据当成单一蛋白上的活性", "建模用 `>= 8`（单一蛋白）；只要直接实测则用 `= 9`"],
             ["把 `confidence_score` 当成数据质量分", "误以为低分 = 实验做得差；实际它描述的是靶点粒度与指认方式", "见 §7.2；低分数据在表型筛选场景下完全可用"],
             ["混用不同 `standard_type`", "IC50 与 Ki 与 %抑制率不可比", "分开处理；至少分开 IC50/EC50 与 Ki/Kd"],
-            ["忽略 `potential_duplicate` / `data_validity_comment`", "同一数值被重复计数；纳入已知错误值", "两者都加进过滤条件"],
+            ["忽略 `potential_duplicate` / `data_validity_comment`", "同一数值被重复计数；纳入已知错误值", "两者都加进过滤条件；但注意 `data_validity_comment IS NULL` 会连 `Manually validated` 的记录一起丢掉"],
             ["把化合物记录数当成化合物数", "`compound_records` 是文献级的，数量远大于唯一化合物", "唯一化合物看 `molecule_dictionary`"],
             ["把盐和母体当成两个分子", "同一药物的不同盐型被算作不同化合物", "用 `molecule_hierarchy` 归并到 parent_molregno"],
             ["假设「没有数据 = 没有活性」", "ChEMBL 存在强烈发表偏倚，阴性结果严重缺失", "做机器学习时需谨慎构造负样本"],
