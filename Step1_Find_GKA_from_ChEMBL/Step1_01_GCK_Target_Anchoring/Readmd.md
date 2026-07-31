@@ -1,4 +1,4 @@
-通过 UniProt P35557，定位 ChEMBL 中所有对应人葡萄糖激酶 GCK 的靶点记录。
+通过 UniProt P35557，定位 ChEMBL 中所有对应人葡萄糖激酶 GCK 的靶点记录。注意：只是找靶点。
 
 查询策略：
 P35557 → component_sequences → component_id → target_components → tid → target_dictionary → chembl_id
