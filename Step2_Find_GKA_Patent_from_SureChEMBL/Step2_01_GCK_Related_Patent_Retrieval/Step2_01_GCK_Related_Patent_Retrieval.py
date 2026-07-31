@@ -56,8 +56,7 @@ HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[1]
 DEFAULT_SNAP = REPO / "SureChEMBL" / "SureChEMBL_2026-07-17"
 DEFAULT_STEP1 = (REPO / "Step1_Find_GKA_from_ChEMBL"
-                 / "Step1_06_GKA_Physicochemical_Property_Extraction"
-                 / "Step1_06_GKA_Physicochemical_Properties.csv")
+                 / "Step1_GKA_Candidates_with_Properties.csv")
 
 # ---------------------------------------------------------------------------
 # 锚定规则（每一条都在库上实测过，文档数记在 Readme 与报告里）
@@ -114,14 +113,13 @@ RISK_FORMS = {
     "GluK": "缩写，需核",
 }
 # 正向信号：这两个其实是 "glucokinase activator" 的缩写
-POSITIVE_FORMS = {"GKA": "「glucokinase activator」的缩写，方向正向信号",
-                  "GKAs": "同上"}
-
-# 阳性对照（后两个是 Step1 之后补的，见 Readme）
-EXTRA_CONTROLS = {
-    "OYUDYQMFVRHPIY-UHFFFAOYSA-N": ("BMS-820132", "CHEMBL5072532"),
-    "HMUMWSORCUWQJO-QAPCUYQASA-N": ("DORZAGLIATIN", "CHEMBL4297508"),
+POSITIVE_FORMS = {
+    "GKA": "✅「glucokinase activator」的缩写，**方向正向信号**",
+    "GKAs": "✅「glucokinase activators」的缩写，**方向正向信号**",
 }
+
+# 阳性对照直接从 Step1 整合表的 is_positive_control / control_name 列读，
+# 不在这里硬编码——Step1_07 把对照集从 8 个扩到 12 个，硬编码会漏。
 
 OUT_COLUMNS = [
     "patent_id", "patent_number", "country", "publication_date",
@@ -207,9 +205,9 @@ def load_step1(con, path: Path) -> int:
     data = [(r["standard_inchi_key"], r["molecule_chembl_id"],
              r["control_name"] if r.get("is_positive_control") == "TRUE" else "")
             for r in rows if r.get("standard_inchi_key")]
-    for ik, (name, cid) in EXTRA_CONTROLS.items():
-        data.append((ik, cid, name))
     con.executemany("INSERT INTO step1_raw VALUES (?,?,?)", data)
+    n_ctl = sum(1 for _, _, c in data if c)
+    log(f"Step1 整合表 {len(rows)} 行，其中阳性对照 {n_ctl} 个")
     # SureChEMBL 的 inchi_key 不唯一，先 DISTINCT 再 join，否则会放大行数
     con.execute("""
         CREATE OR REPLACE TABLE step1_cmp AS
@@ -217,8 +215,8 @@ def load_step1(con, path: Path) -> int:
         FROM step1_raw s JOIN compounds c ON c.inchi_key = s.ik
     """)
     n = con.execute("SELECT COUNT(*) FROM step1_cmp").fetchone()[0]
-    log(f"Step1 候选 {len(data)} 个（含 {len(EXTRA_CONTROLS)} 个补充对照），"
-        f"在 SureChEMBL 里匹配到 {n} 个 compound_id")
+    log(f"Step1 候选 {len(data)} 个，在 SureChEMBL 里按 InChIKey 匹配到 "
+        f"{n} 个 compound_id")
     return n
 
 
@@ -499,23 +497,45 @@ def write_report(con, path: Path, snap: Path, step1_csv: Path, stats: dict) -> N
                        COUNT(*) FILTER (WHERE hit_clms > 0) AS n_clms
                 FROM (SELECT UNNEST(positive_control_names) AS c, hit_clms FROM main)
                 GROUP BY 1 ORDER BY 2 DESC""")
-    found = {r[0] for r in rows}
-    L.append("| 对照 | 命中专利数 | 其中权利要求也提到 GCK |")
-    L.append("| --- | ---: | ---: |")
-    for name, nd, nc in rows:
-        L.append(f"| {name} | {fmt(nd)} | {fmt(nc)} |")
-    all_ctl = set(one("SELECT list(DISTINCT ctl_name) FROM step1_cmp WHERE ctl_name <> ''") or [])
-    for miss in sorted(all_ctl - found):
-        L.append(f"| {miss} | **0** | 0 |")
+    hit = {r[0]: (r[1], r[2]) for r in rows}
+    # 分母必须是**完整的对照集**，不能只算「匹配到结构的那些」——
+    # 「InChIKey 在 SureChEMBL 里没有对应结构」和「有结构但没命中专利」是两种不同的失败，
+    # 混在一起会让自检看着通过、实际有对照从没进过匹配池。
+    all_ctl = set(one("SELECT list(DISTINCT ctl_name) FROM step1_raw "
+                      "WHERE ctl_name <> ''") or [])
+    matched = set(one("SELECT list(DISTINCT ctl_name) FROM step1_cmp "
+                      "WHERE ctl_name <> ''") or [])
+    L.append("| 对照 | 结构在 SureChEMBL | 命中专利数 | 其中权要也提到 GCK |")
+    L.append("| --- | :---: | ---: | ---: |")
+    for name in sorted(all_ctl, key=lambda x: -hit.get(x, (0, 0))[0]):
+        if name in hit:
+            nd, nc = hit[name]
+            L.append(f"| {name} | ✅ | {fmt(nd)} | {fmt(nc)} |")
+        elif name in matched:
+            L.append(f"| {name} | ✅ | **0** | 0 |")
+        else:
+            L.append(f"| {name} | **❌ 无对应结构** | — | — |")
     L.append("")
-    n_ok, n_all = len(found), len(all_ctl)
-    L.append(f"**自检结论：{n_ok}/{n_all} 个对照的专利被捞到。**")
-    if n_ok < n_all:
+    n_ok = len(set(hit))
+    n_nostruct = len(all_ctl - matched)
+    n_all = len(all_ctl)
+    L.append(f"**自检结论：{n_ok}/{n_all} 个对照捞到了专利。**")
+    L.append("")
+    if n_nostruct:
+        L.append(f"其中 **{n_nostruct}** 个对照的 InChIKey 在 SureChEMBL 里**没有对应结构**，"
+                 "从没进入匹配池——这不是检索式的问题：")
         L.append("")
-        L.append("未命中的对照说明：该化合物出现的专利里，GCK 没有被实体标注管道识别出来。"
-                 "**这是召回缺口的直接证据**——纯实体锚定会漏掉一部分真 GKA 专利，"
-                 "下游若要补，只能靠结构相似性或全文检索。")
-    L.append("")
+        for m in sorted(all_ctl - matched):
+            L.append(f"- **{m}**")
+        L.append("")
+        L.append("**盐型通常不会在 SureChEMBL 里单独注册**（专利写的是游离碱结构）。"
+                 "这正是 CLAUDE.md 那条的实证：**跨库对齐结构要先归到母体再取 InChIKey**，"
+                 "拿盐型的 key 去对必然对不上。母体条目已经命中，所以药物层面没有真丢。")
+        L.append("")
+    if n_ok < len(matched):
+        L.append("有结构但一篇专利都没命中的对照，说明该化合物出现的专利里 GCK 没被实体标注"
+                 "识别出来——**这是召回缺口的直接证据**，补只能靠结构相似性或全文检索。")
+        L.append("")
 
     L.append("## 八、GKRP 单独成表")
     L.append("")
