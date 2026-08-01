@@ -16,6 +16,24 @@ ChEMBL/ChEMBL_37/chembl_37/chembl_37_sqlite/chembl_37.db     # 29 GB，不入 gi
 
 **一律以只读模式打开**：`sqlite3.connect(f"file:{db}?mode=ro", uri=True)`。
 
+SureChEMBL 2.0 专利化学，`2026-07-17` 全量快照，本地路径：
+
+```
+SureChEMBL/SureChEMBL_2026-07-17/     # 17 GB，9 个文件，不入 git
+```
+
+**每两周发一版并覆盖 `latest/`，所以固定在日期目录上**，任何结论都对应这一版。
+下载/校验/表结构见 `SureChEMBL/SureChEMBL_2026-07-17/README_SureChEMBL_2026-07-17.md`，
+库的结构与内容速查见 `SureChEMBL/surechembl_2026-07-17_profile_report.md`
+（由 `SureChEMBL/surechembl_profile.py` 生成）。
+
+**大表绝不能整表读进内存**（`patent_compound_map` 15.4 亿行），用 duckdb 直查 parquet：
+
+```python
+con = duckdb.connect()
+con.execute("SET threads=8; SET memory_limit='12GB'; SET enable_progress_bar=false;")
+```
+
 ## 检索链路
 
 ```
@@ -27,7 +45,15 @@ Step1_05  分子层方向判定 → 排除打标 → 效力单轴分档排序 �
 Step1_06  候选分子 → molecule_dictionary/compound_structures/compound_properties
           /molecule_hierarchy/molecule_synonyms → 理化性质主表
 Step1_07  drug_mechanism / usan_stems / molecule_synonyms → 补回零活性的临床 GKA
+Step1_整合 两条路径合表 → Step1_GKA_Candidates_with_Properties.csv（787 × 42）
+
+Step2_01  标题正则 ∪ 实体锚定 → 同族扩展 → GCK 相关专利
+Step2_02  专利分层 L1/L2/L3 → 权要化合物 → 噪声指标 → SureChEMBL 侧候选池
 ```
+
+**两个库各自独立检索，最后 Union。** ChEMBL 侧的分子**不进** SureChEMBL 侧的检索式，
+只做事后验证（`val_*` 列）与最终比较——否则「SureChEMBL 独立贡献了多少」是循环论证。
+同理，以 ChEMBL 分子为种子的**结构相似性检索（`fpsim2`）属于扩展臂，不是独立锚点**。
 
 已锚定的 GCK 靶点（ChEMBL 37）：
 
@@ -46,10 +72,25 @@ Step1_07  drug_mechanism / usan_stems / molecule_synonyms → 补回零活性的
 | Step1_05 | 过方向门与删失门后入选 | 1,222；进 5 个效力档 1,007 |
 | Step1_05 | 后续实验清单 `Step1_05_Followup_Candidates.csv` | 782（P1 39 / P2 83 / P3 202 / P4 458） |
 | Step1_06 | 理化性质主表 | 782 行 × 75 列，全部命中无缺失 |
+| Step1_整合 | 加上 Step1_07 的 5 个零活性临床药 | **787 × 42**，`source` 分 activity / drug_annotation |
 
-**下游要挑分子，直接读 `Step1_06_GKA_Physicochemical_Properties.csv`**——
-它带着 Step1_05 的 `priority` / `potency_band` / `pactivity_median` / `direction` /
-骨架列，是链路末端唯一需要读的表。
+**ChEMBL 侧下游只读 `Step1_GKA_Candidates_with_Properties.csv`**（顶层）——
+它带着 `priority` / `potency_band` / `pactivity_median` / `direction` / `curated_direction` /
+骨架列 + 全部理化性质。
+
+SureChEMBL 侧（`2026-07-17` 快照）：
+
+| 步骤 | 产物 | 规模 |
+|---|---|---|
+| Step2_01 | GCK 相关专利（召回优先） | 35,793 篇 / **7,620 同族** |
+| Step2_02 | L1 标题写 activator | 638 篇 / **143 同族** |
+| Step2_02 | L2 标题/权要提靶点，或说明书提 ≥3 次，且权要有化合物 | 4,283 篇 / **1,388 同族** |
+| Step2_02 | L1+L2 权要化合物 → 过噪声门 | 30,627 → **keep 21,488** |
+
+**SureChEMBL 侧下游只读 `Step2_02_GKA_Compound_Pool.csv`**（`keep = TRUE`）。
+
+⚠ 两侧重叠只有 **313 / 21,488（1.5%）**——两个库在看几乎不相交的化学空间。
+但专利侧那 21,175 个**没有任何活性数据**，「是不是 GKA」尚未证实。
 
 ## 关键事实与陷阱
 
@@ -224,6 +265,89 @@ Step1_07  drug_mechanism / usan_stems / molecule_synonyms → 补回零活性的
   `drug_mechanism` / `drug_indication` 各只覆盖 3 个分子，
   `drug_warning` / `formulations` / `molecule_atc_classification` 为 0。
 
+### SureChEMBL 侧（Step2_01 / Step2_02 验证）
+
+- **数据模型是两条互不相连的标注链，只在 `patents.id` 上碰面：**
+
+  ```
+  文本侧  biomedical_entities ──< biomedical_locations >── patents
+  化学侧  compounds ──────────< patent_compound_map >──── patents
+  ```
+
+  **`compounds` 与 `biomedical_entities` 之间没有任何关联。** SureChEMBL 从不记录
+  「这个化合物作用于这个蛋白」，只记录「谁出现在哪篇专利的哪个部分」。
+  所以**方向（激活/抑制）在 bulk 数据里判不了**——`Mechanism` 类型那 8,202 条实体
+  全是工业化学词（防锈剂、防霉剂、消泡剂），`resolved_form` 全空。
+- **⚠ 标注管道会整篇缺失，这是单一锚点必然漏的根因。**
+  实测四篇专利标题明写 "GLUCOKINASE ACTIVATOR"、化学侧有 72–238 个化合物，
+  但 `biomedical_locations` **一条记录都没有**：
+  `EP-4725482-A1`（GKA 用于认知障碍与神经退行，**本项目最该找到的一篇**）、
+  `US-20260200881-A1`、`CN-118453592-A`、`US-12064416-B2`。
+  只用实体锚定会把它们整个漏掉。**必须多锚点并集**：
+  `patents.title` 正则（不经过标注管道）∪ 实体锚定，再用 `family_id` 展开
+  （实测补 6,422 篇）。改完后权要含已知 GKA 的专利召回率 38% → **95.1%**。
+- **⚠ `field_id` 决定语义，全库差 6.5 倍**（`desc` 12.18 亿关联 vs `clms` 1.87 亿）。
+  说明书含背景技术、会大段引用**他人的**化合物；真正主张保护的只在权利要求。
+  实测 glucokinase 在 `desc` 命中 28,272 篇、`clms` 只有 2,597 篇。
+  锚定步骤两个都留（`hit_*` 列），抽分子时只取 `field_id = 2`。
+- **⚠ 典型的化合物专利在权利要求里根本不提靶点。**
+  标题是纯化学名、权要写通式与取代基，靶点只写在说明书。实测被漏的：
+  `Therapeutic agents`（权要 256 个化合物、装着 52 个 Step1 已知分子，权要提靶点 **0 次**）、
+  `2-(3,5-DISUBSTITUTEDPHENYL)PYRIMIDIN-4(3H)-ONE DERIVATIVES`（说明书提 37 次）。
+  **筛专利不能只看标题和权要，要加「说明书提及 ≥3 次」这一支**——
+  阈值 3 是量出来的：提 1–2 次的有 23,787 篇（顺带列举靶点），≥3 次的只有 2,364 篇。
+- **⚠ 专利的层级不能继承给它的化合物**，与 Step1_04 那条同构。
+  实测 `EP-4725482-A1` 权要里只有 3 个化合物，**其中 2 个是葡萄糖**（开链式 + 环式）——
+  权要写「激活葡萄糖激酶」必然提到底物，抽取管道就把它注册成化合物了。
+  化合物层要独立判别，最有效的指标是 **`n_global`（该结构在全库出现的专利数）**：
+  水 `O` 出现 1,098 万篇，多格列艾汀 187 篇，**差 4 个数量级**。
+- **⚠ 缩写歧义（`GCK` / `GCKs` / `GLK` / `GK`），是 ChEMBL 侧 MAP4K2 那个坑的翻版：**
+
+  | 写法 | `corrected_text` | `resolved_form` | 收不收 |
+  |---|---|---|---|
+  | `GCK` | `GCK` | （未解析） | ❌ |
+  | `GCKs` | **`germinal center kinase`** | （未解析） | ❌ **就是 MAP4K2** |
+  | `GcK`（小写 c） | `glucokinase` | `HGNC:4195` | ✅ |
+  | `GLK` | `GLK` | **`HGNC:6865`（MAP4K3）** | ❌ |
+  | `GK` | `glucokinase` | `HGNC:4195` | ⚠ 收但打标 |
+
+  `GK` 在糖尿病文献里更常指 **Goto-Kakizaki 大鼠**（2 型糖尿病模型），1,343 篇，
+  与本领域高度重叠，必须标 `risk_flags`。
+  `GLK activator` 是 AstraZeneca 系列的写法（47 篇/10 同族），
+  **要加进标题正则必须带上下文**（`GLK\s+activator`），单用会撞 MAP4K3 与植物 Golden2-like 基因。
+- **术语提醒**：文档里写「提 GCK」指的是**提到葡萄糖激酶这个靶点**（35 个归一写法的任一），
+  **不是字面的三个字母 `GCK`**——后者恰恰被排除。写文档时避免这个简写。
+- **⚠ `family_id = -1` 是「未分配同族」哨兵**（全库 71,862 篇），
+  `COUNT(DISTINCT family_id)` 必须 `FILTER (WHERE family_id > 0)`，
+  否则这 7 万篇会被算成同一个发明。
+  另：`family_id` 为空的 1,172,063 篇与 `publication_date` 为空的**完全是同一批**。
+- **⚠ JP / CN 的标注基本失效**：JPO 不提供全文（只有著录项+英文标题摘要），
+  CNIPA 只有英文机翻全文。实测命中率 JP 0.001%、CN 0.004%，US/EP/WO 都在 0.14–0.17%。
+  **这批数据实质上是 US / EP / WO 的视图**，不能说「中国/日本没有 GKA 专利」——
+  是看不见，不是没有。
+- **其他**：`inchi_key` 在 SureChEMBL 里**不唯一**（3,099 万行 / 2,987 万唯一），
+  join 前必须 `DISTINCT`；`biomedical_locations` 里有 96 个孤儿 `patent_id`
+  （`patents` 表中不存在）；本地实测行数与官方宣传数字对不上
+  （实测 4,491 万专利 / 3,099 万化合物，官方称 1.166 亿 / 4,770 万），
+  **做规模陈述以本地实测为准**。
+
+## 方法论：两次踩同一个坑
+
+- **⚠⚠ 阈值必须用阳性对照标定，且自检要写死在脚本里。**
+  这条在 Step1_05 踩过一次（初版 7.0/6.5 只过 4/6，改 6.5/6.0 后 6/6），
+  **Step2_02 又踩了第二次**：看着分布拍了 5 个阈值、一个对照没验，
+  结果 **12 个已知 GKA 只有 3 个通过**。被误杀的两条规则及其错因：
+
+  | 规则 | 误杀 | 为什么错 |
+  |---|---:|---|
+  | `specificity >= 0.01` | 2 | **越重要的药被后续专利引用越多**，全库出现数越大、特异性反而越低（AZD-1656 0.0063、Piraglitin 0.0072）。对成名已久的药有系统性偏见 |
+  | `n_in_sel >= 2` | 5 | 理由本身就错：**一个药通常只在它自己那一族专利的权要里被具体画出来**，别处提它是当现有技术写在说明书。「只出现在 1 篇权要里」恰恰是原研化合物的特征 |
+
+  两条已降级为标注列。**真正的修补不是调阈值，是把自检做成脚本的一部分**——
+  Step1_05 的自检写死在脚本里所以守住了，Step2_02 初版没有所以没守住。
+  现在 `selfcheck_controls()` 误杀会直接报警。
+- **召回优先的步骤，宁可宽也不能把已知的药筛掉。** 收窄留给后面有方向证据的步骤。
+
 ## 各步骤约定
 
 - 每步一个目录：`Readme.md`（任务定义）+ 脚本 + `.csv`（主产物）+ `.md`（报告）。
@@ -231,6 +355,9 @@ Step1_07  drug_mechanism / usan_stems / molecule_synonyms → 补回零活性的
 - 报告开头必须记录出处：ChEMBL 版本、数据库路径、运行时间、输入来源。
 - 多值字段聚合成 JSON 列表写进单元格，**保持一行一个实体**。
 - 空值也是事实，如实记录（如 `variant_id` 0/228），不要省略字段。
+- **过滤一律「加列不删行」**：算指标 → 打 `keep` / `exclude_reason`，被排除的行留在 CSV 里，
+  可复核可反悔、改阈值不用重跑上游。
+- **凡是有阳性对照的步骤，自检必须写进脚本**，误杀要报警（见「方法论」一节）。
 
 ## 规则 + LLM 分类的分工
 
@@ -259,6 +386,8 @@ micromamba 环境 **`GKA_in_Brain`**。micromamba 不在 PATH 上（`.bashrc` �
 | rdkit | 2026.03.4 |
 | numpy | 2.4.6 |
 | pandas | 3.0.5 |
+| pyarrow | 25.0.0（读 parquet） |
+| duckdb | 1.5.5（直查 SureChEMBL 大表） |
 | requests | 2.34.2（Step1_03 调 LLM 用） |
 | sqlite3 模块 | 3.53.4 |
 
