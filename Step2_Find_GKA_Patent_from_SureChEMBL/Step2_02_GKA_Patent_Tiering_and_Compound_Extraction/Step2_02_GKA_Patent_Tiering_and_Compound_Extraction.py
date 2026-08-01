@@ -64,14 +64,27 @@ DEFAULT_STEP1 = REPO / "Step1_Find_GKA_from_ChEMBL" / "Step1_GKA_Candidates_with
 
 CLAIMS_FIELD_ID = 2          # fields.parquet: 2 = clms 权利要求
 
-# 噪声过滤阈值。指标已存列，改这里不用重跑抽取。
+# 噪声过滤阈值 —— **每一条都用阳性对照标定过，误杀 0 个才留下**。
+#
+# ⚠ 初版拍了 5 个阈值没验对照，结果 12 个已知 GKA 只有 3 个通过。被误杀的两条：
+#
+#   specificity >= 0.01  误杀 2 个（AZD-1656 0.0063、Piraglitin 0.0072）
+#       ——「越重要的药被后续专利引用越多，全库出现数越大，特异性反而越低」，
+#         这个指标对成名已久的药有系统性偏见。
+#   n_in_sel >= 2        误杀 5 个（MK-0941、PF-04991532、Neriglitin、LY-2608204、Piraglitin）
+#       ——理由本身就错：一个药通常**只在它自己那一篇（族）专利的权要里**被具体画出来，
+#         别的专利提它是当现有技术、出现在说明书而不是权要。
+#         「只出现在 1 篇权要里」恰恰是原研化合物的特征，不是噪声的特征。
+#
+# 这两条已降级为标注列（`specificity` / `n_in_sel` 照常输出，不参与 keep 判定）。
+# 本步骤是候选池，**宁可宽也不能把已知的药筛掉**，收窄留给后面有方向证据的步骤。
 THRESH = {
-    "n_global_max": 10_000,   # 全库出现专利数上限 —— 砍水/溶剂/试剂/元素符号
-    "mw_min": 250.0,          # 砍元素、气体、小片段、葡萄糖(180)
-    "mw_max": 700.0,          # 砍聚合物
-    "specificity_min": 0.01,  # 砍「GKA 专利里常见但全库更常见」的底物
-    "n_in_sel_min": 2,        # 只出现在一篇里的多是通式枚举的边缘结构
+    "n_global_max": 10_000,   # 砍水/溶剂/试剂/元素符号。对照最大值 316，留 30 倍余量
+    "mw_min": 250.0,          # 砍元素、气体、小片段、葡萄糖(180)。对照最小 378.5
+    "mw_max": 700.0,          # 砍聚合物。对照最大 559.8
 }
+# 只作标注、不参与 keep 判定的指标（保留在 CSV 里供下游自己收窄）
+ANNOTATION_ONLY = ["specificity", "n_in_sel"]
 
 PATENT_COLUMNS = [
     "patent_id", "patent_number", "country", "publication_date", "family_id",
@@ -226,10 +239,7 @@ def enrich_and_judge(con) -> list:
         if mw is None or not (THRESH["mw_min"] <= mw <= THRESH["mw_max"]):
             reasons.append(f"分子量 {mw:.1f} 不在 {THRESH['mw_min']:.0f}–{THRESH['mw_max']:.0f}"
                            if mw is not None else "分子量缺失")
-        if spec < THRESH["specificity_min"]:
-            reasons.append(f"特异性 {spec:.5f} < {THRESH['specificity_min']}")
-        if nsel < THRESH["n_in_sel_min"]:
-            reasons.append(f"只出现在 {nsel} 篇选定专利里")
+        # specificity 与 n_in_sel 只作标注，**不参与 keep 判定**（见 THRESH 上方注释）
 
         out.append({
             "compound_id": cid, "inchi_key": ik, "smiles": smi,
@@ -269,6 +279,42 @@ def compare_step1(con, cmps: list, path: Path) -> dict:
             "n_new": len(kept) - ov}
 
 
+def selfcheck_controls(cmps: list, step1_path: Path) -> dict:
+    """阳性对照自检：已知 GKA 必须活着通过过滤。
+
+    **这是硬性检查，不是可选项。** 初版没做，结果 12 个已知 GKA 只有 3 个通过
+    （见 THRESH 上方注释）。任何阈值改动都必须先过这一关。
+    """
+    if not step1_path.is_file():
+        return {}
+    with step1_path.open(encoding="utf-8") as f:
+        ctl = {r["standard_inchi_key"]: r["control_name"]
+               for r in csv.DictReader(f)
+               if r.get("is_positive_control") == "TRUE" and r.get("standard_inchi_key")}
+    by_ik = {c["inchi_key"]: c for c in cmps if c["inchi_key"]}
+    rows, killed = [], []
+    for ik, name in sorted(ctl.items(), key=lambda kv: kv[1]):
+        c = by_ik.get(ik)
+        if c is None:
+            rows.append({"name": name, "in_pool": False, "keep": None, "why": ""})
+            continue
+        ok = c["keep"] == "TRUE"
+        rows.append({"name": name, "in_pool": True, "keep": ok,
+                     "why": c["exclude_reason"], "n_global": c["n_global"],
+                     "specificity": c["specificity"], "n_in_sel": c["n_in_sel"]})
+        if not ok:
+            killed.append((name, c["exclude_reason"]))
+    in_pool = [r for r in rows if r["in_pool"]]
+    n_ok = sum(1 for r in in_pool if r["keep"])
+    log(f"阳性对照自检：池中 {len(in_pool)}/{len(ctl)}，通过过滤 {n_ok}/{len(in_pool)}")
+    if killed:
+        log("  ⚠⚠ 有已知 GKA 被过滤掉了，阈值必须放宽：")
+        for n, w in killed:
+            log(f"     {n}: {w}")
+    return {"rows": rows, "n_ctl": len(ctl), "n_in_pool": len(in_pool),
+            "n_pass": n_ok, "killed": killed}
+
+
 def write_csv(rows: list, cols: list, path: Path) -> None:
     with path.open("w", encoding="utf-8", newline="") as f:
         w = csv.DictWriter(f, fieldnames=cols, extrasaction="ignore")
@@ -277,7 +323,7 @@ def write_csv(rows: list, cols: list, path: Path) -> None:
             w.writerow({k: ("" if r.get(k) is None else r.get(k)) for k in cols})
 
 
-def write_report(con, cmps, tier_stat, cmp_stat, path, s201, s1) -> None:
+def write_report(con, cmps, tier_stat, cmp_stat, sc, path, s201, s1) -> None:
     L = []
     q = lambda s: con.execute(s).fetchall()          # noqa: E731
     one = lambda s: con.execute(s).fetchone()[0]     # noqa: E731
@@ -392,7 +438,48 @@ def write_report(con, cmps, tier_stat, cmp_stat, path, s201, s1) -> None:
     L.append(f"通过过滤的化合物里，**{fmt(n_l1)}** 个出现在 L1（标题写 activator）的专利中。")
     L.append("")
 
-    L.append("## 五、⚠ 这套规则解决不了的")
+    if sc:
+        L.append("## 五、阳性对照自检 ⭐")
+        L.append("")
+        L.append("**已知 GKA 必须活着通过过滤。这是硬性检查，任何阈值改动都要先过这一关。**")
+        L.append("")
+        L.append("| 对照 | 在池中 | 通过过滤 | `n_global` | 特异性 | `n_in_sel` |")
+        L.append("| --- | :---: | :---: | ---: | ---: | ---: |")
+        for r in sc["rows"]:
+            if not r["in_pool"]:
+                L.append(f"| {r['name']} | ❌ 不在 | — | — | — | — |")
+            else:
+                L.append(f"| {r['name']} | ✅ | {'✅' if r['keep'] else '**❌ ' + r['why'] + '**'} | "
+                         f"{fmt(r['n_global'])} | {r['specificity']} | {r['n_in_sel']} |")
+        L.append("")
+        L.append(f"**结论：池中 {sc['n_in_pool']}/{sc['n_ctl']} 个对照，"
+                 f"通过过滤 {sc['n_pass']}/{sc['n_in_pool']}。**")
+        L.append("")
+        if sc["killed"]:
+            L.append("⚠⚠ **有已知 GKA 被过滤掉，阈值需要放宽。**")
+        else:
+            L.append("不在池中的是盐型（SureChEMBL 不单独注册盐）与专利未进 L1/L2 的，"
+                     "属分层召回问题，与过滤规则无关。")
+        L.append("")
+        L.append("### 初版的教训")
+        L.append("")
+        L.append("初版拍了 5 个阈值**没验对照**，结果 12 个已知 GKA 只有 3 个通过。"
+                 "被误杀的两条规则：")
+        L.append("")
+        L.append("| 规则 | 误杀 | 为什么错 |")
+        L.append("| --- | ---: | --- |")
+        L.append("| `specificity >= 0.01` | 2 | **越重要的药被后续专利引用越多**，"
+                 "全库出现数越大、特异性反而越低（AZD-1656 0.0063、Piraglitin 0.0072）。"
+                 "这个指标对成名已久的药有系统性偏见 |")
+        L.append("| `n_in_sel >= 2` | 5 | 理由本身就错：一个药通常**只在它自己那一族专利的"
+                 "权要里**被具体画出来，别处提它是当现有技术、出现在说明书。"
+                 "**「只出现在 1 篇权要里」恰恰是原研化合物的特征** |")
+        L.append("")
+        L.append("两条已降级为标注列。这与 CLAUDE.md 里「**阈值要用阳性对照标定，"
+                 "不能按整体分布拍**」是同一条——Step1_05 守住了，这里第一次没守住。")
+        L.append("")
+
+    L.append("## 六、⚠ 这套规则解决不了的")
     L.append("")
     L.append("| 问题 | 说明 |")
     L.append("| --- | --- |")
@@ -406,7 +493,7 @@ def write_report(con, cmps, tier_stat, cmp_stat, path, s201, s1) -> None:
     L.append("")
 
     if cmp_stat:
-        L.append("## 六、事后比较：与 ChEMBL 侧的重叠")
+        L.append("## 七、事后比较：与 ChEMBL 侧的重叠")
         L.append("")
         L.append("> **以下不参与任何筛选。** SureChEMBL 侧是独立检索出来的，"
                  "这里只回答「两库各自找到了什么」。")
@@ -424,7 +511,7 @@ def write_report(con, cmps, tier_stat, cmp_stat, path, s201, s1) -> None:
                  "「是不是 GKA」还没被证实。")
         L.append("")
 
-    L.append("## 七、下一步该做什么")
+    L.append("## 八、下一步该做什么")
     L.append("")
     L.append("| 想解决 | 需要什么 |")
     L.append("| --- | --- |")
@@ -453,6 +540,7 @@ def main() -> int:
     extract_compounds(con)
     cmps = enrich_and_judge(con)
     cmp_stat = compare_step1(con, cmps, args.step1_csv)
+    sc = selfcheck_controls(cmps, args.step1_csv)
 
     args.outdir.mkdir(parents=True, exist_ok=True)
     tier_csv = args.outdir / "Step2_02_GKA_Patent_Tiers.csv"
@@ -466,7 +554,7 @@ def main() -> int:
     cmps.sort(key=lambda c: (c["keep"] != "TRUE", -c["n_in_L1"], -c["n_in_sel"],
                              c["compound_id"]))
     write_csv(cmps, CMP_COLUMNS, pool_csv)
-    write_report(con, cmps, tier_stat, cmp_stat, md, args.step2_01, args.step1_csv)
+    write_report(con, cmps, tier_stat, cmp_stat, sc, md, args.step2_01, args.step1_csv)
 
     kept = sum(1 for c in cmps if c["keep"] == "TRUE")
     print(f"\n专利分层表：{tier_csv}  （{len(trows):,} 篇）")
