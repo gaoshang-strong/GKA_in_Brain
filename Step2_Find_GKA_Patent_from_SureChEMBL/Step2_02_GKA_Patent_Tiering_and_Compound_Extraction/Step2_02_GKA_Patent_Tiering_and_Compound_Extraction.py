@@ -64,6 +64,20 @@ DEFAULT_STEP1 = REPO / "Step1_Find_GKA_from_ChEMBL" / "Step1_GKA_Candidates_with
 
 CLAIMS_FIELD_ID = 2          # fields.parquet: 2 = clms 权利要求
 
+# L2 的第三支：说明书里反复讲 GCK 的化合物专利。
+#
+# ⚠ 初版 L2 只认 `by_title OR hit_clms>0`，漏掉了**典型的化合物专利**——
+#   标题是纯化学名、权利要求里一次都不提靶点，靶点只写在说明书。实测被漏的：
+#       Therapeutic agents                       权要提 GCK 0 次，权要 256 个化合物
+#       2-(3,5-DISUBSTITUTEDPHENYL)PYRIMIDIN…    权要提 GCK 0 次，说明书提 37 次
+#       NOVEL 2-PYRIDINECARBOXAMIDE DERIVATIVES  权要提 GCK 0 次，说明书提 32 次
+#       Heteroaryl benzamide … as GLK activators 说明书提 7 次
+#   这些 L3 专利的权要里装着 80 个 Step1 已知分子。
+#
+# 阈值 3 是量出来的：说明书提 1-2 次的有 23,787 篇（"顺带列举靶点"），
+# >=3 次的只有 2,364 篇，信噪比陡变。
+DESC_MENTION_MIN = 3
+
 # 噪声过滤阈值 —— **每一条都用阳性对照标定过，误杀 0 个才留下**。
 #
 # ⚠ 初版拍了 5 个阈值没验对照，结果 12 个已知 GKA 只有 3 个通过。被误杀的两条：
@@ -89,7 +103,8 @@ ANNOTATION_ONLY = ["specificity", "n_in_sel"]
 PATENT_COLUMNS = [
     "patent_id", "patent_number", "country", "publication_date", "family_id",
     "title", "tier", "tier_reason", "title_says_activator", "by_title",
-    "hit_clms", "n_compounds_clms", "has_biomedical_annotation", "anchor_sources",
+    "hit_clms", "hit_desc", "n_compounds_clms", "has_biomedical_annotation",
+    "anchor_sources",
 ]
 
 CMP_COLUMNS = [
@@ -142,28 +157,34 @@ def load_tiers(con, path: Path) -> dict:
         patent_id BIGINT, patent_number VARCHAR, country VARCHAR,
         publication_date VARCHAR, family_id BIGINT, title VARCHAR,
         title_says_activator VARCHAR, by_title VARCHAR, hit_clms INT,
-        n_compounds_clms INT, has_biomedical_annotation VARCHAR,
+        hit_desc INT, n_compounds_clms INT, has_biomedical_annotation VARCHAR,
         anchor_sources VARCHAR)""")
-    con.executemany("INSERT INTO s1 VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+    con.executemany("INSERT INTO s1 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     [(int(r["patent_id"]), r["patent_number"], r["country"],
                       r["publication_date"], int(r["family_id"] or 0), r["title"],
                       r["title_says_activator"], r["by_title"],
-                      int(r["hit_clms"] or 0), int(r["n_compounds_clms"] or 0),
+                      int(r["hit_clms"] or 0), int(r["hit_desc"] or 0),
+                      int(r["n_compounds_clms"] or 0),
                       r["has_biomedical_annotation"], r["anchor_sources"])
                      for r in rows])
-    con.execute("""
+    d = DESC_MENTION_MIN
+    con.execute(f"""
         CREATE OR REPLACE TABLE tiers AS
         SELECT *,
           CASE WHEN title_says_activator = 'TRUE' THEN 'L1'
-               WHEN (by_title = 'TRUE' OR hit_clms > 0) AND n_compounds_clms > 0 THEN 'L2'
+               WHEN (by_title = 'TRUE' OR hit_clms > 0 OR hit_desc >= {d})
+                    AND n_compounds_clms > 0 THEN 'L2'
                ELSE 'L3' END AS tier,
           CASE WHEN title_says_activator = 'TRUE'
                  THEN '标题写 glucokinase activator（含方向信号）'
                WHEN (by_title = 'TRUE' OR hit_clms > 0) AND n_compounds_clms > 0
                  THEN '标题或权要提到 GCK，且权要有化合物'
-               WHEN (by_title = 'TRUE' OR hit_clms > 0) AND n_compounds_clms = 0
+               WHEN hit_desc >= {d} AND n_compounds_clms > 0
+                 THEN '说明书反复讲 GCK（>= {d} 次）且权要有化合物 —— 典型化合物专利'
+               WHEN (by_title = 'TRUE' OR hit_clms > 0 OR hit_desc >= {d})
+                      AND n_compounds_clms = 0
                  THEN '提到 GCK 但权要没有化合物（纯方法/用途权利要求）'
-               ELSE '仅说明书等处提及' END AS tier_reason
+               ELSE '仅顺带提及（说明书 < {d} 次）' END AS tier_reason
         FROM s1
     """)
     stat = {r[0]: (r[1], r[2]) for r in con.execute(
