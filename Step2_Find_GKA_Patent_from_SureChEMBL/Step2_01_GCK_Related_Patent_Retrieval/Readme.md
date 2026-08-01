@@ -1,118 +1,186 @@
-从 SureChEMBL 2026-07-17 快照里检索**所有与葡萄糖激酶（GCK）相关的专利**，
-作为 Step2 的锚定表。
+从 SureChEMBL 2026-07-17 快照检索**所有与葡萄糖激酶（GCK）相关的专利**，作为 Step2 的锚定表。
 
-这一步是**召回优先**：先把网撒全，不判断方向（激活/抑制）、不判断是不是 GKA 专利。
-**只用 bulk parquet 的实体标注按规则检索，不调 API、不用 LLM 解析文本。**
+**召回优先**：不判断方向（激活/抑制）、不判断是不是 GKA 专利、不做 `field_id` 过滤。
+**纯规则检索**，只用 bulk parquet，不调 API、不用 LLM。
 
-输入：`SureChEMBL/SureChEMBL_2026-07-17/`
-     `biomedical_entities.parquet` / `biomedical_locations.parquet` /
-     `patents.parquet` / `patent_compound_map.parquet` / `compounds.parquet` / `fields.parquet`
+## 零、两个原则
 
-交叉引用：`Step1_06_GKA_Physicochemical_Properties.csv`（782 个 ChEMBL 候选，用来交叉与自检）
+### 0.1 SureChEMBL 侧必须独立于 ChEMBL
 
-## 一、锚定规则
+目标是**两个库各自独立找出 GKA，最后 Union**：
 
-**核心：按 `resolved_form` 锚定，不做文本匹配。**
-专利全文来自扫描件 OCR，`glucokinase` 有几十种破碎写法
-（`glucokmase`、`giucokinase`、`gl uc ok i na se`…），文本匹配一定漏。
+```
+ChEMBL 侧    ──独立──→  分子集合 A（Step1，787 个）
+SureChEMBL 侧 ──独立──→  专利集合 B → 权要化合物
+                              └──→ 最后 Union / 比较
+```
 
-### 纳入
+**Step1 的候选不进检索式**，只用于两件事：事后测召回、最后比较。
+表里 `val_*` 前缀的列都是验证列，**没有参与筛选**。
 
-| 规则 | 说明 | 预期文档数 |
-|---|---|---:|
-| `resolved_form = 'HGNC:4195'` | 人 GCK 基因，覆盖 33 个 surface form | 29,332 |
-| 白名单（未解析但明确是 GCK） | `glucokinase (hexokinase 4)` | 102 |
-| 白名单 | `Glucokinase (hexokinase 4, maturity onset diabetes of the young 2)`（MODY2 就是 GCK） | 40 |
+理由：如果用 ChEMBL 的分子去捞专利，找到的必然是已知化学空间的邻域，
+「SureChEMBL 独立贡献了多少」这个问题就变成循环论证了。
 
-### 排除（都实测过，名字带 glucokinase / hexokinase 但不是人 GCK）
+> 同理，**结构相似性检索（`fpsim2`）不属于本步骤**——它以 ChEMBL 为种子，
+> 是扩展臂不是独立锚点，留到后面单独做。
+
+### 0.2 单一锚点必然漏，所以用并集
+
+上一版只用实体标注，实测漏掉了标题里明写 "GLUCOKINASE ACTIVATOR" 的专利。
+原因见下面的坑 ①。**本版用两个独立锚点取并集，再用同族扩展补。**
+
+## 一、检索策略
+
+```
+锚点 A  patents.title 正则           ← 独立于标注管道
+锚点 B  biomedical_locations 实体     ← resolved_form = 'HGNC:4195' + 白名单
+           ↓ 并集
+扩展    family_id 展开               ← 同族成员全收，实测 +6,423 篇
+           ↓
+标注（不筛）  CPC / 命中来源 / field 分布 / 化合物数 / 风险标记
+```
+
+### 锚点 A：标题正则
+
+`patents.title` 是 `patents.parquet` 的原生列，44,912,542 行全在本地，
+**完全不经过生物医学标注管道**，所以标注缺失的专利照样能命中。
+
+匹配词：`glucokinase`、`glucose kinase`、`hexokinase 4`、`hexokinase IV`（不分大小写）。
+
+实测：标题含 `glucokinase` 的 **1,017 篇 / 266 同族**；
+其中 **51 篇是实体法完全捞不到的**。
+另外标题含 `glucokinase activator` 的 **631 篇 / 141 同族**——
+这个是**方向信号**，标 `title_says_activator`。
+
+### 锚点 B：实体标注
+
+**按 `resolved_form` 锚定，不做文本匹配**——`glucokinase` 在库里有 33 种写法，
+含 OCR 破碎形（`glucokmase`、`giucokinase`、`gl uc ok i na se`、`Glucokinas e`），
+文本匹配会漏掉一大半。
+
+| 纳入 | 实体数 | 文档数 |
+|---|---:|---:|
+| `resolved_form = 'HGNC:4195'` | 33 | 29,191 |
+| 白名单 `glucokinase (hexokinase 4)`（未解析） | 1 | 102 |
+| 白名单 `Glucokinase (hexokinase 4, MODY2)`（未解析，MODY2 就是 GCK） | 1 | 40 |
+
+### 扩展：同族展开
+
+同族成员共享同一份说明书和权利要求，但**标注管道是逐篇文档跑的**——
+会出现美国那篇标注全、欧洲那篇标注空。命中任一成员即收全族。
+
+实测：命中 7,618 个同族 → 全部成员 35,749 篇，
+其中 **6,423 篇没被任何锚点直接命中**。这一步免费且逻辑无懈可击。
+
+### 排除（都实测过，名字像但不是人 GCK）
 
 | 实体 | resolved_form | 文档数 | 为什么排除 |
 |---|---|---:|---|
-| `glucokinase regulatory protein` | （未解析） | 302 | **GKRP**，另一类机制 |
-| `Glucokinase (hexokinase 4) regulator` | （未解析） | 243 | 同上 |
-| `Glucokinase regulator` | `HGNC:4196` | 85 | 同上 |
-| `GKRP` | `Q14397` | 162 | 同上 |
-| `ADP-dependent glucokinase` 及变体 | 未解析 / `HGNC:25250` | 424 | **ADPGK，另一个酶** |
-| `ATP-dependent glucokinase` 及变体 | （未解析） | 27 | 细菌/古菌的酶 |
-| `polyphosphate glucokinase` | （未解析） | 126 | 细菌的酶 |
+| `glucokinase regulatory protein` / `Glucokinase (hexokinase 4) regulator` / `GLKRP` | 未解析 | 302 / 243 | **GKRP**，另一类机制 |
+| `Glucokinase regulator` / `GKRP` | `HGNC:4196` / `Q14397` | 85 / 162 | 同上 |
+| `ADP-dependent glucokinase` 及变体 | 未解析 / `HGNC:25250` | 424 | **ADPGK**，另一个酶 |
+| `ATP-dependent glucokinase` 及变体 | 未解析 | 27 | 细菌/古菌的酶 |
+| `polyphosphate glucokinase` | 未解析 | 126 | 细菌的酶 |
 | `glucokinase 1` / `glucokinase-1` | `Q9GTW9` / 未解析 | 35 | 非人物种 |
-| `glucokinase-associated dual specificity phosphatase` | `Q9JIM4` | 4 | 另一个蛋白 |
-| `glucokinase activity, related sequence 1/2` | （未解析） | 2 | 假基因 |
-| 己糖激酶家族其他成员 | `HGNC:4922/4923/4925`（HK1/2/3）、`HGNC:6315`（酮己糖激酶） | ~4,000 | 不是 GCK |
-| **泛称 `hexokinase`** | （未解析） | **29,158** | 规模与锚点集相当，但绝大多数是 HK1/HK2（肿瘤代谢），**无法分辨**。单独统计，不进主表 |
+| HK1 / HK2 / HK3 / 酮己糖激酶 | `HGNC:4922/4923/4925/6315` | ~4,000 | 不是 GCK |
+| **泛称 `hexokinase`** | 未解析 | **29,158** | 规模与锚点集相当，绝大多数是 HK1/HK2（肿瘤代谢），**无法分辨** |
 
-**GKRP 相关的另出一张表**，与 ChEMBL 侧把 `CHEMBL3885579`(GCK–GKRP PPI) 单列一致——
-GKRP 解离剂与直接激活 GCK 是两类机制，不能无脑合并。
+GKRP 相关**另出一张表**，与 ChEMBL 侧单列 `CHEMBL3885579`(GCK–GKRP PPI) 一致。
 
-### 不排除但打标
+### 打标不排除
 
-这些 surface form 会带进假阳性，**标记而不删除**，由下游决定：
-
-| surface form | 文档数 | 风险 |
+| surface form | 文档数 | 标记 |
 |---|---:|---|
-| `GK` | 1,343 | ⚠ 糖尿病文献里 `GK` 更常指 **Goto-Kakizaki 大鼠**（2 型糖尿病模型），与本领域高度重叠 |
-| `4` | 4 | 单个数字被解析成基因，**标注错误** |
+| `GK` | 1,343 | ⚠ 糖尿病文献里更常指 **Goto-Kakizaki 大鼠**（2 型糖尿病模型） |
+| `4` | 4 | ⚠ 单个数字被解析成基因，**标注错误** |
 | `glk` / `GlkA` / `gukA` / `GlcK` | ~70 | 细菌 glucokinase 基因名 |
-| `GKA` / `GKAs` | 144 | 其实是 "glucokinase activator" 的缩写，**方向信号**，正向标记 |
+| `GKA` / `GKAs` | 144 | ✅「glucokinase activator」缩写，**方向正向信号** |
 
-## 二、不做 field 过滤
+## 二、⚠ 已验证的坑（做之前必读）
 
-**这一步不按 `field_id` 筛**。`clms`（权利要求）是精度轴、`desc`（说明书）是召回轴，
-在锚定步骤两者都要。但**每篇专利的 4 个部分命中情况记成列**（`hit_ttl` / `hit_abst` /
-`hit_desc` / `hit_clms` + 提及次数），下游精筛直接用。
+### ① 标注管道会整篇缺失，这是上一版最大的错误
 
-## 三、去重
+**`biomedical_locations` 为空的专利，实体锚定永远找不到，无论标题写得多明白。**
 
-`family_id` 有两类无效值，必须先排除：`-1` 是「未分配同族」哨兵、`NULL` 是缺失。
+实测四篇（都在权要里含已知 GKA 化合物）：
+
+| 专利 | 标题 | 化合物关联 | 生物医学标注 |
+|---|---|---:|---:|
+| `EP-4725482-A1` | GLUCOKINASE ACTIVATOR FOR **COGNITIVE DISORDERS AND NEUROLOGICAL**… | 75 条 | **0 条** |
+| `US-20260200881-A1` | SULFOXIDE AND SULFONE **GLUCOKINASE ACTIVATORS**… | 238 条 | **0 条** |
+| `CN-118453592-A` | **Glucokinase activator** composition for treating diabetes | 151 条 | **0 条** |
+| `US-12064416-B2` | Pharmaceutical combination containing **glucose kinase** activator | 158 条 | **0 条** |
+
+化学抽取跑了（几十上百个化合物），生物医学标注一条没产出。
+**第一篇正是本项目最该找到的专利——GKA 用于认知障碍与神经系统疾病。**
+
+对策：锚点 A（标题）+ 同族扩展。产物里 `has_biomedical_annotation` 列直接暴露这个缺口。
+
+### ② `field_id` 决定语义，差 6.5 倍
+
+`desc`（说明书）含背景技术，会大段引用**他人的**化合物；
+真正主张保护的只在 `clms`（权利要求）。全库 `desc` 12.18 亿关联 vs `clms` 1.87 亿。
+实测 glucokinase 在 `desc` 命中 28,272 篇、`clms` 只有 2,597 篇，**差 11 倍**。
+
+本步骤**不过滤**，但四个部分的命中次数分别记成列，下游精筛直接用。
+
+### ③ `family_id` 有哨兵值 `-1`
+
+`-1` 是「未分配同族」的占位（全库 71,862 篇），
+直接 `COUNT(DISTINCT family_id)` 会把它们错当成同一个发明。
 
 ```sql
 COUNT(DISTINCT family_id) FILTER (WHERE family_id > 0)
 ```
 
-主表**一行一篇专利文档**（保持一行一个实体），`family_id` 作列，同族统计写进报告。
+另：`family_id` 为空的 1,172,063 篇与 `publication_date` 为空的**完全是同一批**，
+是整块元数据缺失，同族扩展对它们无效。
 
-## 四、与 Step1 交叉
+### ④ 「GCK」缩写歧义，与 ChEMBL 那次同源
 
-每篇专利标注：含多少个 Step1_06 的 782 个候选化合物（全部部分 / 仅权利要求）。
-这是连接 ChEMBL 侧与专利侧的唯一桥梁，用 **InChIKey** 对齐。
+全大写 `GCK` 在库里 `resolved_form` **是空的**（无法判断是 glucokinase 还是 MAP4K2），
+`HPK/GCK-like kinase` → `HGNC:6866` 是 MAP4K 家族。**不能拿 `GCK` 当锚点。**
+注意大小写：`GcK`（id 788019）反而正确解析到了 HGNC:4195。
 
-⚠ SureChEMBL 的 `inchi_key` **不唯一**（30,990,818 行 / 29,874,136 唯一），
-join 会产生重复行，要先去重。
+### ⑤ CPC 只能当过滤器，不能当锚点
 
-## 五、自检：阳性对照
+`A61P 3/10`（抗糖尿病）覆盖了 91% 的 GKA 专利（573/631），召回极好，
+但**全库有 204,448 篇**，单独用等于没筛。本步骤只把它记成标注列。
 
-已知 GKA 的专利必须能被捞到。对照集 **8 个**：
+### ⑥ 专利局覆盖严重不均——结论不能外推
 
-| 分子 | ChEMBL | InChIKey |
-|---|---|---|
-| Ro-28-1675 | `CHEMBL1096435` | 从 Step1_06 读 |
-| Piraglitin | `CHEMBL1783734` | 同上 |
-| Neriglitin | `CHEMBL2165615` | 同上 |
-| PF-04991532 | `CHEMBL2165620` | 同上 |
-| AZD-1656 | `CHEMBL3219124` | 同上 |
-| MK-0941 | `CHEMBL3580737` | 同上 |
-| **BMS-820132** | `CHEMBL5072532` | `OYUDYQMFVRHPIY-UHFFFAOYSA-N` |
-| **多格列艾汀 Dorzagliatin** | `CHEMBL4297508` | `HMUMWSORCUWQJO-QAPCUYQASA-N` |
-
-后两个是 Step1 之后补进来的。**多格列艾汀在 ChEMBL 里一条活性记录都没有**
-（已在库上核实），所以它不在 Step1 的 782 个候选里——
-一个已上市的 GKA 在 ChEMBL 查不到活性，这正是要做专利挖掘的理由。
-
-## 六、必须写进报告的已知偏倚
-
-标注覆盖按专利局严重不均（实测）：
-
-| | 命中文档 | 全库该国专利 |
+| | 命中 | 全库该国 |
 |---|---:|---:|
-| US | 15,899 | 969 万 |
-| EP | 7,307 | 527 万 |
-| WO | 5,150 | 301 万 |
+| US / EP / WO | 15,899 / 7,307 / 5,150 | 969 万 / 527 万 / 301 万 |
 | **CN** | **849** | **2,388 万** |
 | **JP** | **31** | **306 万** |
 
-原因：**JPO 不提供全文**（只有著录项 + 英文标题摘要），**CNIPA 只有英文机翻全文**，
-实体标注管道在这两家基本失效。**这批数据实质上是 US / EP / WO 的视图**，
-不能据此谈「全球 GKA 专利版图」。
+**JPO 不提供全文**（只有著录项+英文标题摘要），**CNIPA 只有英文机翻全文**。
+这批数据实质上是 **US / EP / WO 的视图**。
+不能说「中国/日本没有 GKA 专利」——**是看不见，不是没有**。
+
+### ⑦ `inchi_key` 在 SureChEMBL 里不唯一
+
+30,990,818 行 / 29,874,136 唯一，约 110 万重复。join 前必须 `DISTINCT`，
+否则行数被放大。（本步骤只在验证列用到。）
+
+### ⑧ 孤儿 patent_id
+
+`biomedical_locations` 里引用了但 `patents` 表中不存在的 `patent_id`，
+实测 96 个。join `patents` 后数量会掉，是正常的。
+
+## 三、换靶点怎么复用
+
+靶点相关的东西全收在脚本的 `TARGET` 配置块里，检索逻辑不用动。
+换靶点时这几项**必须重新推**，不能照抄：
+
+1. **`resolved_form` 用哪个命名空间**——全库 53% 的实体压根没解析，
+   HGNC 前缀 16.7 万、裸 accession 19.9 万、MeSH 13.2 万。先查你的靶点在哪一类。
+2. **缩写歧义图谱**——`GK` = Goto-Kakizaki 是 GCK+糖尿病特有的。
+   注意实体表里 `WHITE`、`GLASS`、`CLAMP`、`BLIND` 都是真实基因名，
+   **如果靶点基因名是常用英文词，实体锚定会淹在噪声里**。
+3. **近邻蛋白黑名单**——名字像但不是的那些。
+4. **阳性对照**——没有已知临床药就没法标定阈值，这是硬限制。
 
 ## 输出
 
