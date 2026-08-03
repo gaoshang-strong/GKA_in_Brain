@@ -42,3 +42,11 @@ venv/
 
 # LLM 响应缓存（可由脚本重建）
 .llm_cache.json
+
+# ---- 付费墙后的原文 PDF：不入库 ----
+# CNS MPO 的拐点、公式与自检算例取自这两篇，脚本只在文档里引用它们，不读文件本身。
+# 需要时按 DOI 自行获取，放回 Step3_GKA_Brain_Penetration_Prediction/ 即可：
+#   cn100008c.pdf  doi:10.1021/cn100008c   Wager 2010 ACS Chem Neurosci 1(6):435-449
+#                  （Table 1 + Figure 4 给拐点，Methods eq 1/2 给公式，Table 4 给自检算例）
+#   cn100007x.pdf  doi:10.1021/cn100007x   Wager 2010 ACS Chem Neurosci 1(6):420-434（配套文）
+Step3_GKA_Brain_Penetration_Prediction/*.pdf

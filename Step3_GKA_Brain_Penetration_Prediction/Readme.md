@@ -272,35 +272,45 @@ SwissADME 单批约 200 个，787 + 对照要分 5 批左右。网页模型会�
 
 ---
 
-## Step3_04：结果合并
+## Step3_04：结果合并 —— ✅ 已完成，见 `Step3_04_Result_Integration/`
 
-按 `molecule_chembl_id` 合并（对照集用各自的标识列）。不同工具的字段加前缀：
+按 `mol_id` 合并（1,274 行的统一标识，Step3_01 建的）。
+不同工具的字段加前缀 `swissadme_*` / `admetlab_*`，本地算的保持 Step3_01 原名。
 
-```text
-rdkit_tpsa
-chemaxon_cns_mpo
-swissadme_bbb
-swissadme_pgp
-admetlab_bbb
-admetlab_bcrp
-qikprop_qplogbb
-```
+产物 `Step3_04_Integrated_Brain_Penetration_Results.csv`：**1,274 × 261**
 
-保留这几列，让对照与候选在同一张表里可比、可追溯：
+| 块 | 列数 |
+|---|---:|
+| Step3_01 骨架（标识 / GKA 元数据 / 对照实测值 / 标准化结构 / RDKit 描述符） | 67 |
+| `swissadme_*`（48 结果 + 6 追溯） | 54 |
+| `admetlab_*`（122 结果 + 6 追溯） | 128 |
+| CNS MPO：六项 `cnsmpo_t0_*` + 总分 + 3 个换口径版本 + spread + 齐备标记 | 12 |
 
-* `set`：`candidate` / `control_positive` / `control_negative`
-* `batch_id` / `submitted_at` / `tool_version`：批次追溯
-* 各工具的覆盖标记：**哪个分子在哪个工具上没拿到结果，如实记录，不要填默认值**
+可比、可追溯靠这几列：
 
-输出：
+* `set`：`gka_candidate` / `bbb_control_b3db` / `bbb_control_friden`
+* `*_batches`（出现在哪几批）/ `*_n_replicates`（锚点被跑了几次）/ `*_result_from`
+  / `*_shared_result_with`：批次与来源追溯；
+  每批的 mtime 与 SHA256 在 `Step3_04_Batch_Provenance.csv`
+  （SwissADME 网页版**不标版本号**，只能记访问时间）
+* `*_ok` + `*_missing_reason`：**没拿到结果的如实记录，不填默认值**；
+  人工排除（`B3D_0012`）与工具失败分开写
 
-```text
-Step3_04_Integrated_Brain_Penetration_Results.csv
-```
+四条硬规则、校验结果与描述性统计见 `Step3_04_Result_Integration.md`。
+两个工具各覆盖 **1,273 / 1,274** 行，唯一缺口是人工排除的 `B3D_0012`。
+SwissADME 有 1 行结构核对不通过（返回樟脑那条）已剔除并记录；ADMETlab 1,571 行全通过。
+
+**CNS MPO 已算**（拐点取自本地 `cn100008c.pdf` 的 Table 1 + Figure 4，
+用原文 Table 4 算例自检）：出分 1,273 行，另有六项 `cnsmpo_t0_*` 与三个换口径版本。
+⚠ 算分不等于套阈值，`≥4` 这类判据仍属 Step3_05。
 
 ---
 
-## Step3_05：候选排序与流程验收 —— 🚧 本轮不做，待讨论
+## Step3_05：候选排序与流程验收 —— 🚧 判据仍未做，待讨论
+
+已有的只是**描述性材料**，见 `Step3_05_Ranking_and_Validation/`：
+四张图（工具比例 / 概率分布 / 化学空间 / CNS MPO 六项拆解）+ `Step3_05_Figures_Explained.md`。
+**图里没有一条阈值线**，也没有候选名单——下面这些问题一个都还没回答。
 
 **这一步非常重要，需要专门讨论后再定，不要在本轮顺手实现。**
 

@@ -67,7 +67,7 @@ Step3_00  B3DB 分类对照 + Fridén 定量参考 → 入脑对照集（与 GKA
 Step3_01  787 GKA 候选 ∪ 487 对照 → 统一输入表 → RDKit 标准化 + 描述符
 Step3_02  → SwissADME 提交文件（7 批 × ≤200）
 Step3_03  → ADMETlab 提交文件（16 批 × ≤98）
-Step3_04  结果合并（未做）
+Step3_04  两个工具的结果 → 逐行结构校验 → 锚点合并 → 整合表（1,274 × 251）
 Step3_05  排序与流程验收（**未做，需专门讨论**）
 ```
 
@@ -123,37 +123,52 @@ Step3 侧（入脑预测）：
 | Step3_02 | SwissADME **结果** | 返回 1,391 条 → 合并 **1,271 个唯一分子** | ✅ 7/7 批 |
 | Step3_03 | ADMETlab 提交 | 16 批，1,571 条（1,271 唯一结构 + 锚点重复 300） | ✅ |
 | Step3_03 | ADMETlab **结果** | 1,571 条 → **1,271 个唯一分子**（每批 123 列） | ✅ 16/16 批 |
-| Step3_04 | 结果合并 | — | ⬜ 未做 |
-| Step3_05 | 排序与验收 | — | ⬜ **未做，需专门讨论** |
+| Step3_04 | 结果合并 + CNS MPO | **1,274 × 261**，两个工具各覆盖 1,273 行，MPO 出分 1,273 | ✅ |
+| Step3_05 | 排序与验收 | 只出了 4 张**描述性**图 + 说明，**判据仍未做** | ⬜ **需专门讨论** |
 
-SwissADME 结果（7 批合并，1,271 个唯一分子）：
+Step3 的两份讲解文档：
 
-| 集合 | n | BBB+ | Pgp 底物 | **BBB+ 且非 Pgp 底物** |
-|---|---:|---:|---:|---:|
-| B3DB 对照 | 444 | 63.5% | 47.1% | 32.7% |
-| Fridén | 42 | 47.6% | 50.0% | 31.0% |
-| **GKA 候选** | **785** | **3.7%**（29 个） | 51.7% | **3.2%**（25 个） |
+- `Step3_Methods_Explained_From_Scratch.md`（Step3 根目录）——
+  RDKit / SwissADME / ADMETlab / CNS MPO 的原理，**面向零化学背景**，
+  含血脑屏障、LogP vs LogD、TPSA、pKa 的基础解释与本项目踩过的坑。
+- `Step3_05_Ranking_and_Validation/Step3_05_Figures_Explained.md`——
+  四张图（工具比例 / 概率分布 / 化学空间 / MPO 六项拆解）的解读，
+  **图里没有任何阈值线**，判定仍留给 Step3_05。
 
-ADMETlab 结果（16/16 批，1,271 个唯一分子；`BBB` 是 0–1 概率）：
+**Step3 下游只读 `Step3_04_Integrated_Brain_Penetration_Results.csv`**（1,274 × 251）。
+以下数字全部出自它，**以此为准**——Step3_04 之前那次临时统计没剔除樟脑那条、
+也没按锚点重复做中位数合并，个别格子差 1–2 个分子。
 
-| 集合 | n | BBB 中位 | BBB > 0.5 |
-|---|---:|---:|---:|
-| B3DB 对照 | 444 | 0.899 | 64.0% |
-| Fridén | 42 | 0.311 | 47.6% |
-| **GKA 候选** | **785** | **0.014** | **10.7%** |
+两个工具并排（**只是数据，判定属 Step3_05**）：
 
-`logD` / `pka_basic` **零缺失**，CNS MPO 的六项输入至此全部齐备
-（拐点数值仍缺，见下）。
+| 集合 | n | SwissADME BBB+ | Pgp 底物 | **BBB+ 且非 Pgp** | ADMETlab BBB 中位 | BBB > 0.5 | `pgp_sub` 中位 |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| B3DB 对照 | 444 | 63.5% | 47.1% | 32.7%（145） | 0.899 | 64.0% | 0.201 |
+| Fridén | 42 | 47.6% | 50.0% | 31.0%（13） | 0.311 | 47.6% | 0.710 |
+| **GKA 候选** | **787** | **3.7%**（29 个） | 51.8% | **3.2%**（25 个） | **0.014** | **10.8%** | **0.001** |
 
-对照的表现（**只是数据，判定属 Step3_05**），两个工具走向一致：
+对照按实测值分层，两个工具走向一致：
 
-| | SwissADME（BBB+ 占比） | ADMETlab（BBB 中位 / >0.5 占比） |
+| | SwissADME（BBB+ 个数） | ADMETlab（BBB 中位 / >0.5 占比） |
 |---|---|---|
-| Fridén `Kp,uu ≥ 0.3` | 18 个里 12 个 | 0.995 / 82.4% |
-| Fridén `0.05–0.3` | 9 个对半开 | 0.058 / 33.3% |
-| Fridén `Kp,uu ≤ 0.05` | 14 个里 12 个判 BBB− | 0.003 / 23.1% |
-| B3DB `control_positive` | 351 个里 261 个 Yes | 0.960 / 74.8% |
-| B3DB `control_negative` | 93 个里 72 个 No | 0.031 / 19.3% |
+| Fridén `Kp,uu ≥ 0.3` | 18 个里 12 个 | 0.986 / 77.8% |
+| Fridén `0.05–0.3` | 9 个里 6 个 | 0.058 / 33.3% |
+| Fridén `Kp,uu ≤ 0.05` | 14 个里 12 个判 BBB− | 0.002 / 21.4% |
+| B3DB `control_positive` | 351 个里 261 个 Yes | 0.961 / 75.2% |
+| B3DB `control_negative` | 93 个里 72 个 No | 0.033 / 21.5% |
+
+CNS MPO 已出分（1,273 行；拐点取自本地 PDF，见下）：
+
+| 集合 | 总分中位 | ≥ 4 | ≥ 5 |
+|---|---:|---:|---:|
+| B3DB 对照 | 4.74 | 75.3% | 41.1% |
+| Fridén | 4.80 | 69.0% | 33.3% |
+| **GKA 候选** | **3.78** | **38.5%** | **6.9%** |
+
+六项 T0 中位显示**差距只集中在两项**：MW（对照 1.00 / GKA **0.27**）与
+TPSA（1.00 / **0.49**）；LogP、pKa 三组都是 1.00，HBD 上 GKA 反而更好（0.83）。
+`logD` 中位：B3DB 2.67 / Fridén 1.72 / GKA 2.89；
+`pka_basic` 中位：6.56 / 5.87 / **4.65**。
 
 对照集的选取规则（Step3_00）：
 BBB+ 取 B3DB regression `group B` 且 `logBB ≥ −0.5`；
@@ -443,12 +458,50 @@ BBB− 取 `group B`，不足再用 `group A` 补，`logBB ≤ −1.1`；
   Step3_01 的流程是 `Cleanup → LargestFragment(去盐) → Uncharger(中性化)`。
   1,274 个里去盐 8 个、中性化 8 个；**4 个季铵/肟盐是永久正电荷，化学上无法中性化**，已标出。
 - **CNS MPO 是 Pfizer 的评分函数，RDKit 里没有任何实现。**
-  Wager TT, Hou X, Verhoest PR, Villalobos A. ACS Chem Neurosci **2010;1(6):435**（PMID 22778837）
-  与 **2016;7(6):767**（PMID 26991242）。六项 = MW / cLogP / **cLogD7.4** / TPSA / HBD / **最碱性 pKa**，
+  原文（2026-08-03 在 PubMed 逐条核对过题名与卷期页）：
+  - Wager TT, Hou X, Verhoest PR, Villalobos A. *"Moving beyond Rules: The Development of a
+    Central Nervous System Multiparameter Optimization (CNS MPO) Approach To Enable Alignment
+    of Druglike Properties."* **ACS Chem Neurosci 2010;1(6):435–449**，
+    doi:10.1021/cn100008c（PMID 22778837）—— **拐点数值在这一篇**
+  - Wager TT, Hou X, Verhoest PR, Villalobos A. *"Central Nervous System Multiparameter
+    Optimization Desirability: Application in Drug Discovery."*
+    **ACS Chem Neurosci 2016;7(6):767–775**，doi:10.1021/acschemneuro.6b00029（PMID 26991242）
+  - 同期配套文（性质空间的数据来源，119 个上市 CNS 药 + 108 个辉瑞候选）：
+    Wager TT, Chandrasekaran RY, Hou X, Troutman MD, Verhoest PR, Villalobos A, Will Y.
+    *"Defining Desirable Central Nervous System Drug Space through the Alignment of Molecular
+    Properties, in Vitro ADME, and Safety Attributes."*
+    **ACS Chem Neurosci 2010;1(6):420–434**，doi:10.1021/cn100007x
+
+  六项 = MW / cLogP / **cLogD7.4** / TPSA / HBD / **最碱性 pKa**，
   各自过一条 desirability 曲线映射到 0–1 再相加，得 0–6；TPSA 是唯一的「驼峰」函数。
   **RDKit 只给得出四项**，logD7.4 与 pKa 得靠 ADMETlab（`logD` / `pka_basic` 列）。
-  ⚠ **六条曲线的拐点数值尚未拿到**（原文在 ACS 付费墙，ChemAxon 文档只写框架不给数），
-  **不要凭记忆把 `MW 360/500`、`TPSA 40–90/120` 这类拐点写进代码**——记错一个，整批分数系统性偏。
+
+  ✅ **拐点已从原文 PDF 取得**（`Step3_GKA_Brain_Penetration_Prediction/cn100008c.pdf`，
+  Table 1 + Figure 4；变换公式见 Methods eq 1/2：拐点之间**线性**插值、六项**等权**求和）。
+  实现在 `Step3_04_Result_Integration/Step3_04_CNS_MPO.py`：
+
+  | 项 | 形状 | T0 = 1.0 | T0 = 0.0 |
+  |---|---|---|---|
+  | cLogP | 单调下降 | ≤ 3 | > 5 |
+  | cLogD7.4 | 单调下降 | ≤ 2 | > 4 |
+  | MW | 单调下降 | ≤ 360 | > 500 |
+  | TPSA | **驼峰** | 40 < TPSA ≤ 90 | ≤ 20 或 > 120 |
+  | HBD | 单调下降 | ≤ 0.5 | > 3.5 |
+  | 最碱性 pKa | 单调下降 | ≤ 8 | > 10 |
+
+  **自检写死在脚本里**：原文 **Table 4（p.446）的算例输入未被四舍五入**，
+  六项 T0 与总分 4.0 能对到小数点后两位；再加 Table 3 三个候选（容差 0.03）。
+  四组算例任一项对不上，脚本直接退出、拒绝出分。
+  ⚠ 三处**必须显式选择**的口径（原文用 BioByte ClogP / ACD logD 与 pKa，本项目都没有）：
+  ClogP 取 `admetlab_logp`（与同源的 logD/pKa 一致）、TPSA 取 **N/O 口径 `tpsa`**
+  （原文 ref 9 是 Ertl 2000，**与 BOILED-Egg 用含 S/P 的相反**）、MW 取平均分子量。
+  换口径的三个敏感性版本一并算出（`cnsmpo_score_tpsa_sandp` / `_logp_rdkit` / `_logp_swiss`），
+  逐分子给 `cnsmpo_score_variant_spread`：GKA 候选中位 **0.49**，对照只有 0.16——
+  **候选这一侧对口径明显更敏感**，Step3_05 用分数排序前要先看这一列。
+  ⚠⚠ 原文 p.446 明写 *"the algorithm is **not intended to be used purely as a predictor
+  of CNS penetration**"*——它是**成药性对齐**工具，不是入脑预测器。
+  实测佐证：本项目 487 个入脑对照上，CNS MPO 中位**阳性 4.8 / 阴性 4.4，几乎分不开**
+  （而两个工具的 BBB 项分得很开）。**拿它当入脑判据前必须先面对这件事。**
 - **⚠ SwissADME 的 `BBB permeant` 是 (WLOGP, TPSA) 的确定性几何规则，不是独立模型。**
   实测 141 个 "No" 中 **0 个**落在 58 个 "Yes" 点的凸包内部，完全可分。它就是 BOILED-Egg 的卵黄椭圆。
   对比之下 `Pgp substrate` 有 81 个 "No" 落在 "Yes" 凸包内——**它才携带独立信息**。
@@ -518,6 +571,19 @@ BBB− 取 `group B`，不足再用 `group A` 补，`logBB ≤ −1.1`；
 
   ⇒ **凡是网页工具的结果，回填前必须逐行比对「提交的结构」与「返回的结构」的 InChIKey，
   不符的整行剔除并记录，绝不能只按名称或行序对。**
+
+  Step3_04 把这道校验写进了脚本并独立重现了这一条（`Step3_04_Verification_Failures.csv`）。
+  **剔除它有实质影响**：`B3D_0441` 是 `control_positive`，错的那次给 `BBB permeant = Yes`，
+  其余 6 次全是 `No`——不剔除就会被众数合并带偏。
+  ADMETlab 侧 1,571 行全部通过（行序 16/16 批对上、`raw_smiles` 逐字一致）。
+- **⚠ 两个工具的 `MW` 口径不同，别混着比阈值。**（Step3_04 实测）
+  **SwissADME 的 `MW` 是平均分子量**（与 RDKit `MolWt` 一致，最大差 0.02 Da），
+  **ADMETlab 的 `MW` 是单同位素质量**（与 `ExactMolWt` 一致，最大差 0.005 Da）。
+  1,274 个里 **73 个两者差 >1 Da，最大 3.07 Da，全部落在含 Cl（45）/ Br（32）的分子上**。
+  差值对 CNS MPO 的 MW 项影响极小，但**拿 `admetlab_mw` 去比 Lipinski 500 这类硬边界，
+  含卤分子会系统性偏低**。整合表里四个口径都在：`mw` / `mw_exact` / `swissadme_mw` / `admetlab_mw`。
+  ⚠ 这也是自检的一个假警报来源——初版拿 `admetlab_mw` 比 `mw`，报了「73 行回填可能错位」，
+  实际是口径差异。**交叉校验要比同一个量。**
 - **GKA 候选与入脑对照的化学空间几乎不重叠，且这不是去冗余造成的**（已双向验证）：
 
   | | n | MW 中位 | TPSA 中位（不含 S/P） |

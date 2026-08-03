@@ -1,0 +1,148 @@
+{
+  "generated_at": "2026-08-03 08:26:49",
+  "inputs": {
+    "rdkit_table": "/ShangGaoAIProjects/GKA_in_Brain/Step3_GKA_Brain_Penetration_Prediction/Step3_01_Structure_Standardization_and_RDKit_Properties/Step3_01_RDKit_Processed.csv",
+    "swissadme_dir": "/ShangGaoAIProjects/GKA_in_Brain/Step3_GKA_Brain_Penetration_Prediction/Step3_02_SwissADME_Input",
+    "admetlab_dir": "/ShangGaoAIProjects/GKA_in_Brain/Step3_GKA_Brain_Penetration_Prediction/Step3_03_ADMETlab_Input"
+  },
+  "tools": {
+    "SwissADME": {
+      "url": "https://www.swissadme.ch/",
+      "version": "网页版未标版本号",
+      "batches": 7,
+      "note": "iLOGP 与 5 个 CYP 抑制预测整列 n/d（ChemAxon 支持终止的后果）"
+    },
+    "ADMETlab": {
+      "url": "https://admetlab3.scbdd.com/",
+      "version": "3.0",
+      "batches": 16,
+      "note": "BBB 列是 0–1 概率，不是 Yes/No 标签"
+    }
+  },
+  "n_rows_in": 1274,
+  "n_rows_out": 1274,
+  "n_cols_out": 261,
+  "swissadme": {
+    "n_returned": 1391,
+    "n_accepted": 1390,
+    "n_rejected": 1,
+    "n_unique_structures": 1271,
+    "n_rows_covered": 1273,
+    "all_nd_columns": [
+      "swissadme_ilogp",
+      "swissadme_cyp1a2_inhibitor",
+      "swissadme_cyp2c19_inhibitor",
+      "swissadme_cyp2c9_inhibitor",
+      "swissadme_cyp2d6_inhibitor",
+      "swissadme_cyp3a4_inhibitor"
+    ]
+  },
+  "admetlab": {
+    "n_returned": 1571,
+    "n_accepted": 1571,
+    "n_rejected": 0,
+    "n_unique_structures": 1271,
+    "n_rows_covered": 1273
+  },
+  "manual_exclusions": {
+    "B3D_0012": "人工排除：分子过大，超出 SwissADME 适用范围（2026-08-02 / user）"
+  },
+  "cnsmpo": {
+    "computed": true,
+    "source": "Wager TT et al. ACS Chem Neurosci 2010;1(6):435-449, doi:10.1021/cn100008c —— Table 1 + Figure 4（拐点）、Methods eq 1/2（分段线性 + 等权求和）；本地 PDF cn100008c.pdf",
+    "curve_selfcheck": "对照原文 Table 4 算例与 Table 3 的三个候选，六项 T0 与总分全部复现（不通过则脚本直接退出）",
+    "inflection_points": {
+      "clogp": [
+        [
+          3.0,
+          1.0
+        ],
+        [
+          5.0,
+          0.0
+        ]
+      ],
+      "clogd": [
+        [
+          2.0,
+          1.0
+        ],
+        [
+          4.0,
+          0.0
+        ]
+      ],
+      "mw": [
+        [
+          360.0,
+          1.0
+        ],
+        [
+          500.0,
+          0.0
+        ]
+      ],
+      "tpsa": [
+        [
+          20.0,
+          0.0
+        ],
+        [
+          40.0,
+          1.0
+        ],
+        [
+          90.0,
+          1.0
+        ],
+        [
+          120.0,
+          0.0
+        ]
+      ],
+      "hbd": [
+        [
+          0.5,
+          1.0
+        ],
+        [
+          3.5,
+          0.0
+        ]
+      ],
+      "pka": [
+        [
+          8.0,
+          1.0
+        ],
+        [
+          10.0,
+          0.0
+        ]
+      ]
+    },
+    "input_columns": {
+      "MW": "mw",
+      "cLogP": "admetlab_logp",
+      "cLogD7.4": "admetlab_logd",
+      "TPSA": "tpsa",
+      "HBD": "hbd",
+      "pKa(most basic)": "admetlab_pka_basic"
+    },
+    "variants": {
+      "tpsa_sandp": {
+        "tpsa": "tpsa_sandp"
+      },
+      "logp_rdkit": {
+        "clogp": "clogp"
+      },
+      "logp_swiss": {
+        "clogp": "swissadme_consensus_log_p"
+      }
+    },
+    "n_rows_inputs_complete": 1273,
+    "n_rows_scored": 1273,
+    "note": "原文 p.446 明写 the algorithm is not intended to be used purely as a predictor of CNS penetration —— 它是成药性对齐工具，不是入脑预测器。阈值（如常被引用的 ≥4）属 Step3_05，本步不套。"
+  },
+  "selfcheck_problems": []
+}

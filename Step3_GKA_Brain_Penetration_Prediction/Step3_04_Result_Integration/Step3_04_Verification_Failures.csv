@@ -1,0 +1,2 @@
+tool,batch,line_no,mol_id,reason,submitted_smiles,returned_smiles,submitted_inchikey,returned_inchikey
+SwissADME,6,,B3D_0441,返回结构与提交结构不符,CN(C)CCCN1c2ccccc2Sc2ccc(C(F)(F)F)cc21,O=C1[C@@]2(C)CC[C@@H](C1(C)C)C2,XSCGXQMFQXDFCW-UHFFFAOYSA-N,LHXDLQBQYFFVNW-XCBNKYQSSA-N
