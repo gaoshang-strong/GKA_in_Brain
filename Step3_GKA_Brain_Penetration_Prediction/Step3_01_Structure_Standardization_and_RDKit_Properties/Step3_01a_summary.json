@@ -1,0 +1,14 @@
+{
+  "generated_at": "2026-08-02 22:41:27",
+  "inputs": {
+    "gka": "/ShangGaoAIProjects/GKA_in_Brain/Step1_Find_GKA_from_ChEMBL/Step1_GKA_Candidates_with_Properties.csv",
+    "controls": "/ShangGaoAIProjects/GKA_in_Brain/Step3_GKA_Brain_Penetration_Prediction/Step3_00_BBB_Control_Set/Step3_00_BBB_Control_Set.csv"
+  },
+  "counts": {
+    "gka_candidate": 787,
+    "bbb_control_b3db": 445,
+    "bbb_control_friden": 42
+  },
+  "total": 1274,
+  "smiles_missing": 0
+}

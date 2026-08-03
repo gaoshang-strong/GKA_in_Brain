@@ -1,0 +1,17 @@
+{
+  "generated_at": "2026-08-02 23:12:15",
+  "input": "/ShangGaoAIProjects/GKA_in_Brain/Step3_GKA_Brain_Penetration_Prediction/Step3_01_Structure_Standardization_and_RDKit_Properties/Step3_01_Molecule_Input.csv",
+  "n_in": 1274,
+  "n_out": 1274,
+  "parse_ok": 1274,
+  "std_ok": 1274,
+  "desalted": 8,
+  "neutralized": 8,
+  "structure_changed": 15,
+  "duplicate_rows_after_std": 4,
+  "unique_scaffolds": 706,
+  "cns_mpo_note": "RDKit 只能给 MW/cLogP/TPSA/HBD 四项；logD7.4 与 pKa 需 ADMETlab",
+  "selfcheck_problems": [
+    "4 个分子中性化后仍带净电荷（季铵盐等无法中性化），例：sbb079053, nolpitantium, pralidoxime, dehydroevodiamine"
+  ]
+}

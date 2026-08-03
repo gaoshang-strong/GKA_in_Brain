@@ -1,0 +1,2 @@
+mol_id,source_id,compound_name,set,batch,excluded_at,excluded_by,reason,mw,heavy_atoms,note
+B3D_0012,BBBCTRL_012,"mdl 63,246",bbb_control_b3db,3,2026-08-02,user,分子过大，超出 SwissADME 适用范围,1802.733,127,"提交 batch3 时人工删除。糖肽类大分子（MW 1802.7 / 127 重原子 / HBD 21 / HBA 29），是全表 1,274 个分子中唯一 MW > 1000 的；B3DB 对照 MW 中位 325、95 分位 493。SwissADME FAQ 明确其模型面向小分子，不适用于肽类等大分子。该分子在对照集中为 control_negative（logBB -1.48, group A）。batch3 实际提交 198 条而非 199 条。"

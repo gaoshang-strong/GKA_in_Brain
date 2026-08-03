@@ -1,0 +1,28 @@
+{
+  "generated_at": "2026-08-02 22:33:19",
+  "inputs": {
+    "B3DB_regression.tsv": "1be4e33ab1fa1d99897541b6e0a9a00cd6061cf970a36dc838e640407735eba1",
+    "Friden2009_CHEMBL1798466_raw.tsv": "8926fad7dceb502e1c2d63b7d86a078c5887de06c4cbe1e78ec1cd078e6fc464"
+  },
+  "gka_reference": "/ShangGaoAIProjects/GKA_in_Brain/Step1_Find_GKA_from_ChEMBL/Step1_GKA_Candidates_with_Properties.csv",
+  "rules": {
+    "positive": "regression group B, logBB >= -0.5",
+    "negative": "regression group B->A, logBB <= -1.1",
+    "target_positive": null,
+    "target_negative": null,
+    "scaffold_cap": 3,
+    "weights": {
+      "logbb_margin": 1.0,
+      "n_reference": 1.0,
+      "gka_distance": -0.5
+    },
+    "acyclic_as_one_cluster": true
+  },
+  "counts": {
+    "b3db_positive": 351,
+    "b3db_negative": 94,
+    "friden_quantitative": 42,
+    "total": 487
+  },
+  "selfcheck_problems": []
+}
